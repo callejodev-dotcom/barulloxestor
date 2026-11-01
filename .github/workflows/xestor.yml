@@ -1,0 +1,154 @@
+name: Barullo Xestor
+
+# Compila e proba en Mac (universal), Windows e Linux; ao subir unha etiqueta «v…», publica a
+# versión cun .zip para Mac, un .zip e un instalador para Windows e un .tar.gz para Linux.
+# A firma de Mac é a dos plugins (os mesmos segredos ca escoita-nucleo/plugin.yml): se non están,
+# vai asinada «ad hoc».
+
+on:
+  push: { branches: ["**"], tags: ["v*"] }
+  workflow_dispatch:
+
+env:
+  JUCE_VERSION: "8.0.4"
+
+jobs:
+  mac:
+    name: Mac (Apple Silicon + Intel)
+    runs-on: macos-15
+    env:
+      MACOS_CERT_P12: ${{ secrets.MACOS_CERT_P12 }}
+      MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+      MACOS_DEV_ID: ${{ secrets.MACOS_DEV_ID }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versión, JUCE e núcleo
+        run: |
+          VER=$(grep -oE "project\(BarulloXestor VERSION [0-9.]+" CMakeLists.txt | awk '{print $3}')
+          NUC=$(grep -oE 'ESCOITA_NUCLEO_VERSION "[^"]+"' CMakeLists.txt | cut -d'"' -f2)
+          echo "VER=$VER" >> "$GITHUB_ENV"
+          git clone -q --depth 1 --branch "$JUCE_VERSION" https://github.com/juce-framework/JUCE.git "$RUNNER_TEMP/JUCE"
+          git clone -q --depth 1 --branch "$NUC" https://github.com/callejodev-dotcom/escoita-nucleo.git "$RUNNER_TEMP/escoita-nucleo"
+      - name: Compilar (universal)
+        run: |
+          cmake -B build -G Xcode -DJUCE_DIR="$RUNNER_TEMP/JUCE" -DESCOITA_NUCLEO="$RUNNER_TEMP/escoita-nucleo" \
+            -DBARULLO_WERROR=ON -DCMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+          cmake --build build --config Release -j 4
+      - name: Probas
+        run: |
+          ./build/XestorProbas_artefacts/Release/XestorProbas
+          B="build/BarulloXestor_artefacts/Release/Barullo Xestor.app/Contents/MacOS/Barullo Xestor"
+          "$B" --axuda
+          mkdir -p "$RUNNER_TEMP/p" && "$B" --listar --dir "$RUNNER_TEMP/p" --sen-rede || true
+          "$B" --icona "$RUNNER_TEMP/icona.png"
+      - name: Certificado de Apple (só se está configurado)
+        if: env.MACOS_CERT_P12 != ''
+        run: |
+          KC="$RUNNER_TEMP/firma.keychain-db"
+          echo "$MACOS_CERT_P12" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "" "$KC"
+          security import "$RUNNER_TEMP/cert.p12" -P "$MACOS_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KC"
+          security list-keychain -d user -s "$KC"
+          security set-key-partition-list -S apple-tool:,apple: -k "" "$KC"
+      - name: Empaquetar (.zip)
+        run: bash empaquetado/mac.sh build "$VER" dist
+      - uses: actions/upload-artifact@v4
+        with: { name: mac, path: dist/* }
+
+  windows:
+    name: Windows (x64)
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Versión, JUCE e núcleo
+        run: |
+          VER=$(grep -oE "project\(BarulloXestor VERSION [0-9.]+" CMakeLists.txt | awk '{print $3}')
+          NUC=$(grep -oE 'ESCOITA_NUCLEO_VERSION "[^"]+"' CMakeLists.txt | cut -d'"' -f2)
+          T="$(cygpath -m "$RUNNER_TEMP")"
+          { echo "VER=$VER"; echo "JUCE=$T/JUCE"; echo "NUCLEO=$T/escoita-nucleo"; } >> "$GITHUB_ENV"
+          git clone -q --depth 1 --branch "$JUCE_VERSION" https://github.com/juce-framework/JUCE.git "$T/JUCE"
+          git clone -q --depth 1 --branch "$NUC" https://github.com/callejodev-dotcom/escoita-nucleo.git "$T/escoita-nucleo"
+      - name: Compilar
+        run: |
+          cmake -B build -A x64 -DJUCE_DIR="$JUCE" -DESCOITA_NUCLEO="$NUCLEO"
+          cmake --build build --config Release -j 4
+      - name: Probas
+        run: |
+          ./build/XestorProbas_artefacts/Release/XestorProbas.exe
+          # (a app é de Windows, sen consola: só se comproba que responde)
+          "./build/BarulloXestor_artefacts/Release/Barullo Xestor.exe" --axuda; echo "código: $?"
+      - name: Zip portátil e instalador (Inno Setup, en galego)
+        run: |
+          D="BarulloXestor-$VER-windows-x64"
+          mkdir -p "$D" dist
+          cp "build/BarulloXestor_artefacts/Release/Barullo Xestor.exe" "$D/"
+          7z a -tzip "dist/$D.zip" "$D" > /dev/null
+          choco upgrade innosetup -y --no-progress
+          ISCC="/c/Program Files (x86)/Inno Setup 6/ISCC.exe"
+          "$ISCC" "//DAppVersion=$VER" "//DArtDir=$(cygpath -w "$PWD/$D")" "//DOutDir=$(cygpath -w "$PWD/dist")" \
+            "//DLangDir=$(cygpath -w "$NUCLEO/empaquetado")" "$(cygpath -w "$PWD/empaquetado/windows.iss")"
+      - uses: actions/upload-artifact@v4
+        with: { name: windows, path: dist/* }
+
+  linux:
+    name: Linux (x86_64)
+    runs-on: ubuntu-22.04   # glibc antiga: así funciona tamén en distribucións de hai uns anos
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencias
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libasound2-dev libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev \
+            libxcomposite-dev libxext-dev libfreetype6-dev libfontconfig1-dev libcurl4-openssl-dev ninja-build xvfb
+      - name: Versión, JUCE e núcleo
+        run: |
+          VER=$(grep -oE "project\(BarulloXestor VERSION [0-9.]+" CMakeLists.txt | awk '{print $3}')
+          NUC=$(grep -oE 'ESCOITA_NUCLEO_VERSION "[^"]+"' CMakeLists.txt | cut -d'"' -f2)
+          echo "VER=$VER" >> "$GITHUB_ENV"
+          git clone -q --depth 1 --branch "$JUCE_VERSION" https://github.com/juce-framework/JUCE.git "$RUNNER_TEMP/JUCE"
+          git clone -q --depth 1 --branch "$NUC" https://github.com/callejodev-dotcom/escoita-nucleo.git "$RUNNER_TEMP/escoita-nucleo"
+      - name: Compilar
+        run: |
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DJUCE_DIR="$RUNNER_TEMP/JUCE" -DESCOITA_NUCLEO="$RUNNER_TEMP/escoita-nucleo"
+          cmake --build build
+      - name: Probas
+        run: |
+          ./build/XestorProbas_artefacts/Release/XestorProbas
+          B="build/BarulloXestor_artefacts/Release/Barullo Xestor"
+          "$B" --axuda
+          mkdir -p "$RUNNER_TEMP/p" && "$B" --listar --dir "$RUNNER_TEMP/p" --sen-rede || true
+          xvfb-run -a "$B" --icona "$RUNNER_TEMP/icona.png"
+      - name: Empaquetar (.tar.gz)
+        run: bash empaquetado/linux.sh build "$VER" dist
+      - uses: actions/upload-artifact@v4
+        with: { name: linux, path: dist/* }
+
+  publicar:
+    name: Publicar versión
+    # só se todo foi ben (coma nos plugins: nunca a medias)
+    if: >-
+      startsWith(github.ref, 'refs/tags/v') && !cancelled() &&
+      needs.mac.result == 'success' && needs.windows.result == 'success' && needs.linux.result == 'success'
+    needs: [mac, windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          name: Barullo Xestor ${{ github.ref_name }}
+          body_path: NOTAS-VERSION.md
+          files: dist/*

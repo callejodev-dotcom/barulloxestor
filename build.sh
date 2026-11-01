@@ -1,31 +1,25 @@
 #!/bin/bash
-# Compila Barullo Xestor e fai dist/Barullo Xestor.app (sen Xcode: SwiftPM + este script).
-# Uso: ./build.sh            → dist/Barullo Xestor.app
-#      ./build.sh --instalar → e cópiaa a ~/Applications
+# Compila Barullo Xestor (JUCE + CMake) e pasa as probas.
+# Uso: ./build.sh            → build/BarulloXestor_artefacts/Release/
+#      ./build.sh --instalar → (Mac) e cópiaa a ~/Applications (a anterior, ao Lixo; nunca rm)
+# JUCE e o núcleo: os cartafoles irmáns ../JUCE e ../escoita-nucleo, coma nos plugins.
 set -eo pipefail
 cd "$(dirname "$0")"
-VERSION="0.1.0"
-APP="dist/Barullo Xestor.app"
+GEN=()
+command -v ninja >/dev/null 2>&1 && GEN=(-G Ninja)
+cmake -B build ${GEN[@]+"${GEN[@]}"} -DCMAKE_BUILD_TYPE=Release
+J="$( (sysctl -n hw.ncpu || nproc) 2>/dev/null)"
+cmake --build build --config Release -j "$J"
+./build/XestorProbas_artefacts/Release/XestorProbas
 
-swift build -c release --product BarulloXestor
-BIN="$(swift build -c release --show-bin-path)/BarulloXestor"
-
-rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN" "$APP/Contents/MacOS/BarulloXestor"
-sed "s/VERSION/$VERSION/g" Recursos/Info.plist > "$APP/Contents/Info.plist"
-cp Recursos/AppIcon.icns "$APP/Contents/Resources/"
-printf 'APPL????' > "$APP/Contents/PkgInfo"
-codesign --force --deep -s - "$APP"
-codesign --verify --deep --strict "$APP"
-echo "Feito: $APP"
-
-if [ "$1" = "--instalar" ]; then
+if [ "$1" = "--instalar" ] && [ "$(uname)" = Darwin ]; then
+  APP="build/BarulloXestor_artefacts/Release/Barullo Xestor.app"
+  codesign --force --deep -s - "$APP"
+  codesign --verify --deep --strict "$APP"
   mkdir -p "$HOME/Applications"
   DEST="$HOME/Applications/Barullo Xestor.app"
-  # a anterior, ao Lixo (nunca rm)
   if [ -d "$DEST" ]; then
-    mv "$DEST" "$HOME/.Trash/Barullo Xestor $(date +%s).app"
+    mv "$DEST" "$HOME/.Trash/Barullo Xestor $(date +%Y-%m-%d\ %H.%M.%S).app"
   fi
   ditto "$APP" "$DEST"
   echo "Copiada a $DEST"
