@@ -175,6 +175,9 @@ void Modelo::instalar (const Produto& p, bool forzar)
         int ultimo = -1;
         Informe inf;
         juce::String erroTxt;
+        // copia local: MSVC non deixa que a lambda [&] de dentro colla por referencia o «w»
+        // capturado (const) pola lambda de fóra
+        auto wLocal = w;
         try
         {
             inf = inst.instalar (prod, formatos, forzar, [&] (double v)
@@ -183,7 +186,7 @@ void Modelo::instalar (const Produto& p, bool forzar)
                 if (n != ultimo)
                 {
                     ultimo = n;
-                    juce::MessageManager::callAsync ([wr = w, id, v]
+                    juce::MessageManager::callAsync ([wr = wLocal, id, v]
                     {
                         if (wr == nullptr || wr->traballos.count (id) == 0) return;
                         wr->traballos[id] = v;
