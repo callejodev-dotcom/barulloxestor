@@ -256,9 +256,11 @@ int main (int argc, char** argv)
     {
         auto m = Rutas::reais (SO::mac), w = Rutas::reais (SO::win), l = Rutas::reais (SO::lin);
         proba ("rutas: Mac, Windows e Linux (usuario e sistema)",
+              #if ! JUCE_WINDOWS   // en Windows, juce::File pon a unidade diante das rutas de Mac
                m.usuario.ruta ("Barullo FM", Formato::vst3).getFullPathName().endsWith ("Library/Audio/Plug-Ins/VST3/Barullo FM.vst3")
-               && m.sistema[0].ruta ("Barullo FM", Formato::vst3).getFullPathName() == "/Library/Audio/Plug-Ins/VST3/Barullo FM.vst3"
-               && nomeFicheiro (SO::win, "Barullo FM", Formato::app) == "Barullo FM.exe"
+               && m.sistema[0].ruta ("Barullo FM", Formato::vst3).getFullPathName() == "/Library/Audio/Plug-Ins/VST3/Barullo FM.vst3" &&
+              #endif
+               nomeFicheiro (SO::win, "Barullo FM", Formato::app) == "Barullo FM.exe"
                && w.sistema[0].appEnSubcartafol && w.usuario.cartafoles.count (Formato::au) == 0
                && nomeFicheiro (SO::lin, "Barullo Tune", Formato::app, "barullo-tune") == "barullo-tune"
                && l.sistema.size() == 2 && l.usuario.cartafoles.count (Formato::lv2) == 1);
