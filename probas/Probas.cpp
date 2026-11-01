@@ -81,7 +81,7 @@ void asinar (const juce::File& b)
 juce::File facerArquivo (const Temporal& t, const juce::String& curto, const juce::String& version,
                          const std::vector<std::pair<juce::String, Formato>>& bundles, bool asinados = true, bool cuarentena = false)
 {
-    const juce::String sufixo = so == SO::mac ? "mac" : so == SO::windows ? "windows-x64" : "linux-x86_64";
+    const juce::String sufixo = so == SO::mac ? "mac" : so == SO::win ? "windows-x64" : "linux-x86_64";
     const auto pai = t.sub ("fonte-" + juce::Uuid().toString());
     const auto d = pai.getChildFile (curto + "-" + version + "-" + sufixo);
     d.createDirectory();
@@ -96,7 +96,7 @@ juce::File facerArquivo (const Temporal& t, const juce::String& curto, const juc
        #endif
     }
     d.getChildFile ("LEEME.txt").replaceWithText ("le-me");
-    if (so == SO::linux)
+    if (so == SO::lin)
     {
         const auto tgz = t.dir.getChildFile (curto + "-" + version + "-" + sufixo + ".tar.gz");
         executar ({ "tar", "-czf", tgz.getFullPathName(), "-C", pai.getFullPathName(), d.getFileName() });
@@ -118,7 +118,7 @@ juce::File facerArquivo (const Temporal& t, const juce::String& curto, const juc
 
 juce::String nomeArquivo (const juce::String& curto, const juce::String& v)
 {
-    return curto + "-" + v + (so == SO::mac ? "-mac.zip" : so == SO::windows ? "-windows-x64.zip" : "-linux-x86_64.tar.gz");
+    return curto + "-" + v + (so == SO::mac ? "-mac.zip" : so == SO::win ? "-windows-x64.zip" : "-linux-x86_64.tar.gz");
 }
 
 Lanzamento lanzamentoDe (const juce::String& v, const juce::File& arquivo = {}, const juce::String& sha = {}, juce::int64 tamano = 0)
@@ -250,20 +250,20 @@ int main (int argc, char** argv)
         auto l = GitHub::lanzamento (o);
         proba ("versión publicada: o arquivo de cada sistema, tamaño e SHA-256",
                l && l->version() && *l->version() == *Version::ler ("0.4.0") && l->arquivo (SO::mac)->url == "https://x/a.zip"
-               && l->arquivo (SO::mac)->sha256 == "abc" && l->arquivo (SO::windows)->tamano == 30
-               && l->arquivo (SO::linux)->nome.endsWith (".tar.gz") && l->publicado.getYear() == 2026);
+               && l->arquivo (SO::mac)->sha256 == "abc" && l->arquivo (SO::win)->tamano == 30
+               && l->arquivo (SO::lin)->nome.endsWith (".tar.gz") && l->publicado.getYear() == 2026);
     }
     {
-        auto m = Rutas::reais (SO::mac), w = Rutas::reais (SO::windows), l = Rutas::reais (SO::linux);
+        auto m = Rutas::reais (SO::mac), w = Rutas::reais (SO::win), l = Rutas::reais (SO::lin);
         proba ("rutas: Mac, Windows e Linux (usuario e sistema)",
                m.usuario.ruta ("Barullo FM", Formato::vst3).getFullPathName().endsWith ("Library/Audio/Plug-Ins/VST3/Barullo FM.vst3")
                && m.sistema[0].ruta ("Barullo FM", Formato::vst3).getFullPathName() == "/Library/Audio/Plug-Ins/VST3/Barullo FM.vst3"
-               && nomeFicheiro (SO::windows, "Barullo FM", Formato::app) == "Barullo FM.exe"
+               && nomeFicheiro (SO::win, "Barullo FM", Formato::app) == "Barullo FM.exe"
                && w.sistema[0].appEnSubcartafol && w.usuario.cartafoles.count (Formato::au) == 0
-               && nomeFicheiro (SO::linux, "Barullo Tune", Formato::app, "barullo-tune") == "barullo-tune"
+               && nomeFicheiro (SO::lin, "Barullo Tune", Formato::app, "barullo-tune") == "barullo-tune"
                && l.sistema.size() == 2 && l.usuario.cartafoles.count (Formato::lv2) == 1);
         proba ("formatos: listas e claves", listaFormatos ("vst3, component,standalone") == std::vector<Formato> { Formato::vst3, Formato::au, Formato::app }
-               && ! listaFormatos ("vst4") && formatosDe (SO::windows).size() == 3);
+               && ! listaFormatos ("vst4") && formatosDe (SO::win).size() == 3);
     }
 
     // ------------------------------------------------------------ escáner e estados

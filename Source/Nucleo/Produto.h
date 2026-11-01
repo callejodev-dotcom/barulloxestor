@@ -5,7 +5,7 @@ namespace xestor
 {
 // O sistema para o que se fan as rutas e se escolle o ficheiro publicado. Por defecto, este;
 // as probas poden pedir outro para ver as rutas de Windows ou Linux desde un Mac.
-enum class SO { mac, windows, linux };
+enum class SO { mac, win, lin };   // (non «linux»: en GCC «linux» é unha macro que vale 1)
 SO soActual();
 
 // Os formatos que se poden instalar. O usuario escolle cales; por defecto, só VST3.

@@ -27,9 +27,9 @@ Modelo::~Modelo()
 void Modelo::noFioPrincipal (std::function<void()> f)
 {
     juce::WeakReference<Modelo> w (this);
-    juce::MessageManager::callAsync ([w, f]
+    juce::MessageManager::callAsync ([wr = w, f]
     {
-        if (w != nullptr) f();
+        if (wr != nullptr) f();
     });
 }
 
@@ -113,10 +113,10 @@ void Modelo::cargar (bool forzar)
         for (auto& p : c->produtos)
             if (! p.capturas.isEmpty())
                 if (auto im = miniaturaDe (gh->imaxe (p.capturas[0])); im.isValid()) (*minis)[p.id()] = im;
-        juce::MessageManager::callAsync ([w, gh, c, minis]
+        juce::MessageManager::callAsync ([wr = w, gh, c, minis]
         {
-            if (w == nullptr) return;
-            auto& m = *w;
+            if (wr == nullptr) return;
+            auto& m = *wr;
             m.github = gh;
             m.catalogo = *c;
             m.miniaturas = *minis;
@@ -183,30 +183,30 @@ void Modelo::instalar (const Produto& p, bool forzar)
                 if (n != ultimo)
                 {
                     ultimo = n;
-                    juce::MessageManager::callAsync ([w, id, v]
+                    juce::MessageManager::callAsync ([wr = w, id, v]
                     {
-                        if (w == nullptr || w->traballos.count (id) == 0) return;
-                        w->traballos[id] = v;
-                        if (v >= 1.0) w->fases[id] = "instalando";
-                        w->avisar();
+                        if (wr == nullptr || wr->traballos.count (id) == 0) return;
+                        wr->traballos[id] = v;
+                        if (v >= 1.0) wr->fases[id] = "instalando";
+                        wr->avisar();
                     });
                 }
                 return true;
             });
         }
         catch (const ErroInstalacion& e) { erroTxt = e.texto(); }
-        juce::MessageManager::callAsync ([w, prod, inf, erroTxt]
+        juce::MessageManager::callAsync ([wr = w, prod, inf, erroTxt]
         {
-            if (w == nullptr) return;
+            if (wr == nullptr) return;
             if (erroTxt.isNotEmpty())
             {
-                w->traballos.erase (prod.id());
-                w->erro = prod.nome + ": " + erroTxt;
-                w->mensaxe = w->erro;
-                w->avisar();
+                wr->traballos.erase (prod.id());
+                wr->erro = prod.nome + ": " + erroTxt;
+                wr->mensaxe = wr->erro;
+                wr->avisar();
                 return;
             }
-            w->rematar (prod, inf);
+            wr->rematar (prod, inf);
         });
     });
 }
@@ -225,7 +225,7 @@ void Modelo::desinstalar (const Produto& p)
     {
         Instalador inst (r, lixo, &elevador, transporte, Instalador::cartafolTemporal(), &rexistro);
         auto inf = inst.desinstalar (prod, formatos, true);
-        juce::MessageManager::callAsync ([w, prod, inf] { if (w != nullptr) w->rematar (prod, inf); });
+        juce::MessageManager::callAsync ([wr = w, prod, inf] { if (wr != nullptr) wr->rematar (prod, inf); });
     });
 }
 
@@ -243,7 +243,7 @@ void Modelo::quitarCopiasVellas (const Produto& p)
     {
         Instalador inst (r, lixo, &elevador, transporte, Instalador::cartafolTemporal(), &rexistro);
         auto inf = inst.botar (vellas);
-        juce::MessageManager::callAsync ([w, prod, inf] { if (w != nullptr) w->rematar (prod, inf); });
+        juce::MessageManager::callAsync ([wr = w, prod, inf] { if (wr != nullptr) wr->rematar (prod, inf); });
     });
 }
 
@@ -274,14 +274,14 @@ void Modelo::desinstalarOrfo (const Instalado& i)
     {
         Instalador inst (r, lixo, &elevador, transporte, Instalador::cartafolTemporal(), &rexistro);
         auto inf = inst.botar ({ i });
-        juce::MessageManager::callAsync ([w, inf, i]
+        juce::MessageManager::callAsync ([wr = w, inf, i]
         {
-            if (w == nullptr) return;
+            if (wr == nullptr) return;
             juce::StringArray t;
             for (auto& a : inf.accions) t.add (a.texto());
-            w->mensaxe = t.joinIntoString (U (" · "));
-            if (! inf.ok()) w->erro = i.plugin + ": " + w->mensaxe;
-            w->reescanear();
+            wr->mensaxe = t.joinIntoString (U (" · "));
+            if (! inf.ok()) wr->erro = i.plugin + ": " + wr->mensaxe;
+            wr->reescanear();
         });
     });
 }

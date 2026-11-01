@@ -112,7 +112,7 @@ std::vector<Atopado> Instalador::bundles (const juce::File& dir, SO so, const Pr
             if (u.getFileName() == "__MACOSX" || u.getFileName().startsWith (".")) continue;
             if (auto f = formatoDoFicheiro (so, u))
                 r.push_back ({ u.getFileNameWithoutExtension(), *f, u });
-            else if (so == SO::linux && u.existsAsFile() && p.plugins.size() == 1 && u.getFileName() == p.binario)
+            else if (so == SO::lin && u.existsAsFile() && p.plugins.size() == 1 && u.getFileName() == p.binario)
                 r.push_back ({ p.plugins[0], Formato::app, u });   // a app de Linux: o BINARIO, sen extensión
             else if (u.isDirectory())
                 mirar (u, nivel + 1);

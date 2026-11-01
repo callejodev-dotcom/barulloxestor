@@ -7,9 +7,9 @@ SO soActual()
    #if JUCE_MAC
     return SO::mac;
    #elif JUCE_WINDOWS
-    return SO::windows;
+    return SO::win;
    #else
-    return SO::linux;
+    return SO::lin;
    #endif
 }
 
@@ -24,8 +24,8 @@ std::vector<Formato> formatosDe (SO so)
     switch (so)
     {
         case SO::mac:     return { Formato::vst3, Formato::au, Formato::clap, Formato::app };
-        case SO::windows: return { Formato::vst3, Formato::clap, Formato::app };
-        case SO::linux:   return { Formato::vst3, Formato::clap, Formato::lv2, Formato::app };
+        case SO::win: return { Formato::vst3, Formato::clap, Formato::app };
+        case SO::lin:   return { Formato::vst3, Formato::clap, Formato::lv2, Formato::app };
     }
     return { Formato::vst3 };
 }
@@ -107,7 +107,7 @@ int orde (TipoProduto t) { return (int) t; }
 
 const Activo* Lanzamento::arquivo (SO so) const
 {
-    const juce::String sufixo = so == SO::mac ? "-mac.zip" : so == SO::windows ? "-windows-x64.zip" : "-linux-x86_64.tar.gz";
+    const juce::String sufixo = so == SO::mac ? "-mac.zip" : so == SO::win ? "-windows-x64.zip" : "-linux-x86_64.tar.gz";
     for (auto& a : activos)
         if (a.nome.toLowerCase().endsWith (sufixo)) return &a;
     return nullptr;

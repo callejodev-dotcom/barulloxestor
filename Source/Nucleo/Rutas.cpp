@@ -18,7 +18,7 @@ juce::String nomeFicheiro (SO so, const juce::String& plugin, Formato f, const j
         case Formato::lv2:  return plugin + ".lv2";
         case Formato::app:
             if (so == SO::mac) return plugin + ".app";
-            if (so == SO::windows) return plugin + ".exe";
+            if (so == SO::win) return plugin + ".exe";
             return binario.isNotEmpty() ? binario : plugin.toLowerCase().replace (" ", "-");
     }
     return plugin;
@@ -30,9 +30,9 @@ std::optional<Formato> formatoDoFicheiro (SO so, const juce::File& f)
     if (ext == ".vst3") return Formato::vst3;
     if (ext == ".component" && so == SO::mac) return Formato::au;
     if (ext == ".clap") return Formato::clap;
-    if (ext == ".lv2" && so == SO::linux) return Formato::lv2;
+    if (ext == ".lv2" && so == SO::lin) return Formato::lv2;
     if (ext == ".app" && so == SO::mac && f.isDirectory()) return Formato::app;
-    if (ext == ".exe" && so == SO::windows) return Formato::app;
+    if (ext == ".exe" && so == SO::win) return Formato::app;
     return std::nullopt;   // a app de Linux (sen extensión) recoñécea o instalador polo BINARIO
 }
 
@@ -88,7 +88,7 @@ Rutas Rutas::reais (SO so)
                          { Formato::clap, sp.getChildFile ("CLAP") }, { Formato::app, juce::File ("/Applications") } };
         r.sistema.push_back (s);
     }
-    else if (so == SO::windows)
+    else if (so == SO::win)
     {
         // VST3 e CLAP por usuario: %LOCALAPPDATA%\Programs\Common\... (as rutas oficiais das dúas normas)
         auto local = juce::File (juce::SystemStats::getEnvironmentVariable ("LOCALAPPDATA", casa.getChildFile ("AppData\\Local").getFullPathName()));
