@@ -249,6 +249,24 @@ int main (int argc, char** argv)
         proba ("buscar polo nome: «tune», «Barullo Tune», «barullotune», «TUNE»",
                p->casa ("tune") && p->casa ("Barullo Tune") && p->casa ("barullotune") && p->casa ("TUNE") && ! p->casa ("ley")
                && normalizar (U ("Ambiénte Ñ")) == "ambienten");
+
+        // a xanela: as pestanas, o buscador e os recontos
+        auto ley = *p;
+        ley.nome = "Barullo Ley"; ley.curto = "BarulloLey"; ley.plugins = { "Barullo Ley" };
+        ley.descricion = U ("Un delay: dixital, cinta, analóxico");
+        auto xuno = ley;
+        xuno.nome = "Barullo Xuno"; xuno.curto = "BarulloXuno"; xuno.plugins = { "Barullo Xuno" };
+        xuno.tipo = TipoProduto::instrumento; xuno.descricion = U ("Sintetizador analóxico de seis voces");
+        const std::vector<Produto> todos { *p, ley, xuno, *s };
+        const auto r = contar (todos);
+        const auto rb = contar (todos, "ANALOXICO");
+        proba ("filtros: pestanas, busca sen tiles en varias palabras e recontos",
+               casaPestana (xuno, Pestana::instrumentos) && ! casaPestana (xuno, Pestana::efectos) && casaPestana (*s, Pestana::paquetes)
+               && casaPestana (ley, Pestana::todo)
+               && casaBusca (ley, "") && casaBusca (ley, "  ") && casaBusca (ley, U ("analóxico")) && casaBusca (ley, "cinta delay")
+               && ! casaBusca (ley, "cinta reverb") && casaBusca (*s, "volume") && casaBusca (xuno, "xu") && ! casaBusca (xuno, "ley")
+               && r.todo == 4 && r.instrumentos == 1 && r.efectos == 2 && r.paquetes == 1 && r.de (Pestana::efectos) == 2
+               && rb.todo == 2 && rb.instrumentos == 1 && rb.efectos == 1 && rb.paquetes == 0);
     }
     {
         juce::var o;

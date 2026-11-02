@@ -67,6 +67,7 @@ set(NUCLEO_SOURCES
   Source/Nucleo/Autoactualizacion.cpp
   Source/Nucleo/Diagnostico.cpp
   Source/Nucleo/Texto.cpp
+  Source/Nucleo/Filtro.cpp
   Source/Nucleo/Traducions.cpp
   Source/App/CLI.cpp)
 if(APPLE)

@@ -34,3 +34,4 @@
 #include "Autoactualizacion.h"
 #include "Diagnostico.h"
 #include "Texto.h"
+#include "Filtro.h"
