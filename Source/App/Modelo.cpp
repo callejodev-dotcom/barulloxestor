@@ -422,7 +422,7 @@ void Modelo::escena (const juce::String& e)
             else if (! descarga && p.ultima) { traballos[p.id()] = 0.42; fases[p.id()] = "descargando"; descarga = true; mensaxe = tr ("%1: descargando…", p.nome); }
         }
     }
-    else if (e == "demo" || e == "ficha")
+    else if (e == "demo" || e == "ficha" || e == "actualizacions")
     {
         // coma na maqueta: tres actualizacións, unha copia vella e o primeiro descargando
         finxirActualizacions();
