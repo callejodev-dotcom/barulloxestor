@@ -305,6 +305,99 @@ void paintCuberta (juce::Graphics& g, const juce::Image& im, juce::Rectangle<flo
     g.drawImageTransformed (im, juce::AffineTransform::scale (e).translated (r.getX() + dx, r.getY() + dy));
 }
 
+
+// ================================================================ a perspectiva
+std::array<juce::Point<float>, 4> esquinas (float w, float h, const Perspectiva& p)
+{
+    const float ry = juce::degreesToRadians (p.rotY), rx = juce::degreesToRadians (p.rotX), rz = juce::degreesToRadians (p.rotZ);
+    auto proxectar = [&] (float x, float y)
+    {
+        // coma no CSS: primeiro rotateZ, despois rotateX e rotateY (a lista aplícase de dereita a esquerda);
+        // o eixo y vai cara abaixo e o z cara a quen mira
+        float x1 = x * std::cos (rz) - y * std::sin (rz), y1 = x * std::sin (rz) + y * std::cos (rz), z1 = 0.0f;
+        const float y2 = y1 * std::cos (rx) - z1 * std::sin (rx), z2 = y1 * std::sin (rx) + z1 * std::cos (rx);
+        const float x3 = x1 * std::cos (ry) + z2 * std::sin (ry), z3 = -x1 * std::sin (ry) + z2 * std::cos (ry);
+        const float k = p.distancia / (p.distancia - z3);
+        return juce::Point<float> (x3 * k, y2 * k);
+    };
+    return { proxectar (-w * 0.5f, -h * 0.5f), proxectar (w * 0.5f, -h * 0.5f), proxectar (w * 0.5f, h * 0.5f), proxectar (-w * 0.5f, h * 0.5f) };
+}
+
+juce::Image reducir (const juce::Image& im, int ancho)
+{
+    if (! im.isValid() || ancho <= 0) return {};
+    auto r = im.convertedToFormat (juce::Image::ARGB);
+    while (r.getWidth() > ancho * 2)
+        r = r.rescaled (r.getWidth() / 2, juce::jmax (1, r.getHeight() / 2), juce::Graphics::highResamplingQuality);
+    const int alto = juce::jmax (1, juce::roundToInt ((float) ancho * (float) im.getHeight() / (float) im.getWidth()));
+    if (r.getWidth() != ancho) r = r.rescaled (ancho, alto, juce::Graphics::highResamplingQuality);
+    return r;
+}
+
+juce::Image deformar (const juce::Image& src, float w, float h, const Perspectiva& p, float escala, float radio, juce::Rectangle<float>& caixa)
+{
+    const auto q = esquinas (w, h, p);
+    caixa = juce::Rectangle<float>::findAreaContainingPoints (q.data(), 4);
+    if (! src.isValid()) return {};
+    // a orixe, á escala física e axustada a píxeles enteiros
+    caixa = juce::Rectangle<float> (std::floor (caixa.getX() * escala) / escala, std::floor (caixa.getY() * escala) / escala,
+                                    std::ceil (caixa.getWidth() * escala + 2.0f) / escala, std::ceil (caixa.getHeight() * escala + 2.0f) / escala);
+    const int W = juce::roundToInt (caixa.getWidth() * escala), H = juce::roundToInt (caixa.getHeight() * escala);
+    // a fonte, ao tamaño que vai ter (máis ou menos) no destino
+    const auto fonte = reducir (src, juce::jmax (2, juce::roundToInt (w * escala)));
+    const int sw = fonte.getWidth(), sh = fonte.getHeight();
+
+    // a homografía do cadrado unidade ao cuadrilátero (Heckbert), en píxeles físicos do destino
+    double x[4], y[4];
+    for (int i = 0; i < 4; ++i) { x[i] = (q[(size_t) i].x - caixa.getX()) * escala; y[i] = (q[(size_t) i].y - caixa.getY()) * escala; }
+    const double dx1 = x[1] - x[2], dx2 = x[3] - x[2], dx3 = x[0] - x[1] + x[2] - x[3];
+    const double dy1 = y[1] - y[2], dy2 = y[3] - y[2], dy3 = y[0] - y[1] + y[2] - y[3];
+    const double den = dx1 * dy2 - dx2 * dy1;
+    const double G = std::abs (den) < 1e-12 ? 0.0 : (dx3 * dy2 - dx2 * dy3) / den;
+    const double Hh = std::abs (den) < 1e-12 ? 0.0 : (dx1 * dy3 - dx3 * dy1) / den;
+    const double A = x[1] - x[0] + G * x[1], B = x[3] - x[0] + Hh * x[3], C = x[0];
+    const double D = y[1] - y[0] + G * y[1], E = y[3] - y[0] + Hh * y[3], F = y[0];
+    // a inversa (a adxunta abonda: o factor común desaparece ao dividir)
+    const double i00 = E - F * Hh, i01 = C * Hh - B, i02 = B * F - C * E;
+    const double i10 = F * G - D, i11 = A - C * G, i12 = C * D - A * F;
+    const double i20 = D * Hh - E * G, i21 = B * G - A * Hh, i22 = A * E - B * D;
+
+    juce::Image out (juce::Image::ARGB, juce::jmax (1, W), juce::jmax (1, H), true);
+    const juce::Image::BitmapData so (fonte, juce::Image::BitmapData::readOnly);
+    juce::Image::BitmapData de (out, juce::Image::BitmapData::writeOnly);
+    const float rr = radio * escala;
+    for (int py = 0; py < H; ++py)
+    {
+        auto* fila = reinterpret_cast<juce::PixelARGB*> (de.getLinePointer (py));
+        for (int px = 0; px < W; ++px)
+        {
+            const double X = px + 0.5, Y = py + 0.5;
+            const double ww = i20 * X + i21 * Y + i22;
+            if (std::abs (ww) < 1e-12) continue;
+            const double u = (i00 * X + i01 * Y + i02) / ww, v = (i10 * X + i11 * Y + i12) / ww;
+            const float sx = (float) (u * sw), sy = (float) (v * sh);
+            if (sx < -1.0f || sy < -1.0f || sx > (float) sw + 1.0f || sy > (float) sh + 1.0f) continue;
+            // a cobertura: a distancia ao bordo redondeado (en píxeles da fonte, que van case 1:1)
+            const float qx = juce::jmax (std::abs (sx - (float) sw * 0.5f) - ((float) sw * 0.5f - rr), 0.0f);
+            const float qy = juce::jmax (std::abs (sy - (float) sh * 0.5f) - ((float) sh * 0.5f - rr), 0.0f);
+            const float dist = std::sqrt (qx * qx + qy * qy) - rr
+                             + juce::jmin (juce::jmax (std::abs (sx - (float) sw * 0.5f) - ((float) sw * 0.5f - rr), std::abs (sy - (float) sh * 0.5f) - ((float) sh * 0.5f - rr)), 0.0f);
+            const float cob = juce::jlimit (0.0f, 1.0f, 0.5f - dist);
+            if (cob <= 0.0f) continue;
+            // bilineal
+            const float fx = juce::jlimit (0.0f, (float) sw - 1.001f, sx - 0.5f), fy = juce::jlimit (0.0f, (float) sh - 1.001f, sy - 0.5f);
+            const int x0 = (int) fx, y0 = (int) fy;
+            const float ax = fx - (float) x0, ay = fy - (float) y0;
+            auto px00 = so.getPixelColour (x0, y0), px10 = so.getPixelColour (x0 + 1, y0);
+            auto px01 = so.getPixelColour (x0, y0 + 1), px11 = so.getPixelColour (x0 + 1, y0 + 1);
+            auto mestura = [] (juce::Colour a, juce::Colour b, float t) { return a.interpolatedWith (b, t); };
+            const auto c = mestura (mestura (px00, px10, ax), mestura (px01, px11, ax), ay);
+            fila[px].set (juce::PixelARGB (c.withMultipliedAlpha (cob).getPixelARGB()));
+        }
+    }
+    return out;
+}
+
 // ================================================================ a icona
 void paintMandoFamilia (juce::Graphics& g, juce::Rectangle<float> r, bool placa, bool monocromo)
 {
@@ -445,13 +538,15 @@ void Look::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce:
 {
     const auto e = estiloDe (b);
     auto r = b.getLocalBounds().toFloat().reduced (0.5f);
-    const float rad = e == "pestana" ? 8.0f : e == "chip" ? 6.0f : 10.0f;
+    const bool redonda = b.getProperties().contains ("redonda");
+    const float rad = redonda ? (float) b.getHeight() * 0.5f : e == "pestana" ? 8.0f : e == "chip" ? 6.0f : b.getHeight() >= 44 ? 12.0f : 10.0f;
     const bool on = b.isEnabled();
     if (e == "primaria")
     {
-        if (on) paintSombra (g, r.reduced (4.0f, 2.0f), rad, col::laranxa.withAlpha (over ? 0.45f : 0.32f), 14.0f, 5.0f);
+        const bool grande = b.getProperties().contains ("grande");
+        if (on) paintSombra (g, r.reduced (4.0f, 2.0f), rad, col::laranxa.withAlpha (over ? 0.45f : (grande ? 0.4f : 0.32f)), grande ? 24.0f : 14.0f, grande ? 9.0f : 5.0f);
         auto rr = down ? r.translated (0.0f, 1.0f) : r;
-        juce::ColourGradient gr (juce::Colour (0xfff0a12a), 0.0f, rr.getY(), juce::Colour (0xffcf7c0d), 0.0f, rr.getBottom(), false);
+        juce::ColourGradient gr (juce::Colour (0xfff3a634), 0.0f, rr.getY(), juce::Colour (0xffd27d0c), 0.0f, rr.getBottom(), false);
         if (! on) { gr = juce::ColourGradient (col::tecla1, 0.0f, rr.getY(), col::tecla2, 0.0f, rr.getBottom(), false); }
         g.setGradientFill (gr);
         g.fillRoundedRectangle (rr, rad);
@@ -461,24 +556,47 @@ void Look::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce:
     }
     else if (e == "icona")
     {
-        g.setColour (juce::Colours::white.withAlpha (down ? 0.09f : over ? 0.07f : 0.04f));
+        if (redonda)
+        {
+            g.setColour (juce::Colour (0xff0c1020).withAlpha (0.55f));
+            g.fillEllipse (r);
+            g.setColour (juce::Colours::white.withAlpha (down ? 0.12f : over ? 0.09f : 0.05f));
+            g.fillEllipse (r);
+        }
+        else
+        {
+            g.setColour (juce::Colours::white.withAlpha (down ? 0.09f : over ? 0.07f : 0.04f));
+            g.fillRoundedRectangle (r, rad);
+            g.setColour (juce::Colours::white.withAlpha (over ? 0.10f : 0.06f));
+            g.drawRoundedRectangle (r, rad, 1.0f);
+        }
+    }
+    else if (e == "escura")
+    {
+        // a tecla secundaria de D: un vidro escuro cun bordo fino
+        g.setColour (juce::Colour (0xff0c1020).withAlpha (0.6f));
         g.fillRoundedRectangle (r, rad);
-        g.setColour (juce::Colours::white.withAlpha (over ? 0.10f : 0.06f));
+        g.setColour (juce::Colours::white.withAlpha (down ? 0.12f : over ? 0.10f : 0.063f));
+        g.fillRoundedRectangle (r, rad);
+        g.setColour (juce::Colours::white.withAlpha (over ? 0.16f : 0.094f));
         g.drawRoundedRectangle (r, rad, 1.0f);
     }
     else if (e == "contorno" || e == "fantasma")
     {
         const auto c = e == "contorno" ? corProp (b, "cor", col::ouro) : col::crema;
+        if (e == "contorno") { g.setColour (juce::Colour (0xd90b0f1f)); g.fillRoundedRectangle (r, rad); }
         if (over && on) { g.setColour (c.withAlpha (0.08f)); g.fillRoundedRectangle (r, rad); }
         g.setColour (c.withAlpha (! on ? 0.08f : e == "contorno" ? (over ? 0.55f : 0.35f) : (over ? 0.24f : 0.14f)));
         g.drawRoundedRectangle (r, rad, 1.0f);
     }
     else if (e == "pestana")
     {
-        if (b.getToggleState() || over)
+        // só o texto; a escollida, cunha liña laranxa debaixo
+        if (b.getToggleState())
         {
-            g.setColour (juce::Colours::white.withAlpha (b.getToggleState() ? 0.06f : 0.03f));
-            g.fillRoundedRectangle (r, rad);
+            const float tw = anchoTexto (fonteTecla (b, e), b.getButtonText());
+            g.setColour (col::laranxa);
+            g.fillRoundedRectangle (r.getCentreX() - tw * 0.5f, r.getBottom() - 3.0f, tw, 2.0f, 1.0f);
         }
     }
     else if (e == "chip")
@@ -519,13 +637,14 @@ void Look::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool over, bo
 {
     const auto e = estiloDe (b);
     auto r = b.getLocalBounds().toFloat();
-    if (down && (e == "primaria" || e.isEmpty())) r.translate (0.0f, 1.0f);
+    if (down && (e == "primaria" || e == "escura" || e.isEmpty())) r.translate (0.0f, 1.0f);
     const bool on = b.isEnabled();
     juce::Colour c = col::crema;
     if (e == "primaria") c = on ? juce::Colour (0xff1a1205) : col::crema3;
     else if (e == "icona") c = over ? col::crema : col::crema2;
     else if (e == "contorno") c = corProp (b, "cor", col::ouro);
     else if (e == "fantasma") c = over ? col::crema : col::crema2;
+    else if (e == "escura") c = col::crema;
     else if (e == "pestana") c = b.getToggleState() ? col::crema : over ? col::crema2 : col::crema3;
     else if (e == "chip") c = b.getToggleState() ? col::crema : over ? col::crema2 : col::crema3;
     else if (e == "aviso") c = col::ouro;
@@ -538,6 +657,7 @@ void Look::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool over, bo
         const auto icona = b.getProperties()["icona"].toString();
         if (icona == "refrescar") { paintRefrescar (g, r, c); return; }
         if (icona == "axustes") { paintEngrenaxe (g, r, c); return; }
+        if (icona == "lupa") { paintLupa (g, r.translated (1.0f, 1.0f), c); return; }
         if (icona == "mais")
         {
             for (int i = -1; i <= 1; ++i) g.fillEllipse (r.getCentreX() + (float) i * 5.0f - 1.4f, r.getCentreY() - 1.4f, 2.8f, 2.8f);
@@ -640,10 +760,7 @@ void Look::fillTextEditorBackground (juce::Graphics& g, int w, int h, juce::Text
 {
     if (t.getProperties().contains ("buscador"))
     {
-        auto r = juce::Rectangle<float> ((float) w, (float) h).reduced (0.5f);
-        g.setColour (juce::Colours::black.withAlpha (0.25f));
-        g.fillRoundedRectangle (r, 10.0f);
-        return;
+        return;   // (o fondo debúxao a barra)
     }
     LookAndFeel_V4::fillTextEditorBackground (g, w, h, t);
 }
@@ -654,7 +771,7 @@ void Look::drawTextEditorOutline (juce::Graphics& g, int w, int h, juce::TextEdi
     {
         auto r = juce::Rectangle<float> ((float) w, (float) h).reduced (0.5f);
         g.setColour (t.hasKeyboardFocus (true) ? col::laranxa.withAlpha (0.55f) : juce::Colours::white.withAlpha (0.06f));
-        g.drawRoundedRectangle (r, 10.0f, t.hasKeyboardFocus (true) ? 1.4f : 1.0f);
+        g.drawRoundedRectangle (r, r.getHeight() * 0.5f, t.hasKeyboardFocus (true) ? 1.4f : 1.0f);
         return;
     }
     LookAndFeel_V4::drawTextEditorOutline (g, w, h, t);

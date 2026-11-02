@@ -1,5 +1,6 @@
 #pragma once
 #include <juce_gui_basics/juce_gui_basics.h>
+#include <array>
 
 // O aspecto da familia Barullo (o mesmo dos editores dos plugins: Barullo Ley, ADT, Tune...):
 // o azul mariño da noite de Vigo, a crema da letra de Escoita e a luz laranxa, nun aparello de
@@ -64,6 +65,23 @@ void paintPastilla (juce::Graphics&, juce::Rectangle<float>, const juce::String&
 float anchoPastilla (const juce::String&);
 // unha imaxe recortada para encher (desde arriba á esquerda), cun zoom opcional
 void paintCuberta (juce::Graphics&, const juce::Image&, juce::Rectangle<float>, float zoom = 1.0f, float opacidade = 1.0f);
+
+// ---------------------------------------------------------------- a perspectiva (coma o CSS 3D)
+// Un rectángulo w×h (centrado na orixe) xirado (rotateY, rotateX, rotateZ, en graos) e visto cunha
+// perspectiva «distancia» (px). JUCE non ten perspectiva: a imaxe deformase píxel a píxel (unha
+// homografía exacta con mostraxe bilineal) e gárdase, así non custa nada en cada fotograma.
+struct Perspectiva
+{
+    float rotY = 0.0f, rotX = 0.0f, rotZ = 0.0f, distancia = 1600.0f;
+};
+// as catro esquinas proxectadas (arriba-esq., arriba-der., abaixo-der., abaixo-esq.), relativas ao centro
+std::array<juce::Point<float>, 4> esquinas (float w, float h, const Perspectiva&);
+// A imaxe deformada (en píxeles físicos: «escala» por punto lóxico), cos cantos redondeados «radio»
+// (en puntos). «caixa» devolve onde vai, en puntos e relativa ao centro do rectángulo.
+juce::Image deformar (const juce::Image& src, float w, float h, const Perspectiva&, float escala, float radio,
+                      juce::Rectangle<float>& caixa);
+// unha imaxe reducida con calidade (a metades sucesivas e despois ao tamaño)
+juce::Image reducir (const juce::Image&, int ancho);
 
 // ---------------------------------------------------------------- a icona
 // O mando da familia: o arco de segmentos coas oito cores, o disco e a agulla. En «r» (cadrado)
