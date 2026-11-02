@@ -105,16 +105,6 @@ juce::String tamano (juce::int64 b)
     return juce::String (juce::jmax<juce::int64> (1, b / 1024)) + " KB";
 }
 
-// os formatos que hai instalados, na orde de sempre: «VST3 · CLAP»
-juce::StringArray formatosInstalados (const Situacion& s)
-{
-    juce::StringArray r;
-    for (auto f : todosOsFormatos())
-        for (auto& i : s.relevantes())
-            if (i.formato == f) { r.add (etiqueta (f)); break; }
-    return r;
-}
-
 // o que se fai coa tecla principal (e co menú) pasa antes polo aviso do DAW aberto
 bool cambiaPlugins (Estado e)
 {
@@ -220,29 +210,6 @@ void paintAnacos (juce::Graphics& g, const std::vector<Anaco>& as, juce::Rectang
     }
 }
 
-std::vector<Anaco> anacosVersion (Modelo& modelo, const Produto& p)
-{
-    const auto s = modelo.situacion (p);
-    const auto e = s.estado();
-    const auto ult = p.ultima ? p.ultima->version() : std::nullopt;
-    const auto ins = s.versionInstalada();
-    const auto luz = acento (p.nome);
-    if (e == Estado::soLocal)
-        return { { p.versionLocal ? tr ("local") + " " + p.versionLocal->texto() : tr ("Aínda sen publicar"), col::crema3 } };
-    if (e == Estado::actualizacion && ins && ult)
-        return { { ins->texto(), col::crema2 }, { U (" → "), col::crema3 }, { ult->texto(), luz } };
-    if (! ult) return { { U ("—"), col::crema3 } };
-    auto fs = formatosInstalados (s);
-    std::vector<Anaco> r { { "v" + (ins ? ins->texto() : ult->texto()), col::crema3 } };
-    if (! fs.isEmpty()) r.push_back ({ U (" · ") + fs.joinIntoString (U (" · ")), col::crema3 });
-    if (p.eSerie() && ! s.relevantes().empty())
-    {
-        const int con = (int) p.plugins.size() - s.faltan().size();
-        r.push_back ({ U (" · ") + juce::String (con) + "/" + juce::String (p.plugins.size()), col::crema3 });
-    }
-    return r;
-}
-
 // o progreso dun traballo: unha barra na cor do plugin co texto «Descargando · 62 %»
 void paintProgreso (juce::Graphics& g, Modelo& modelo, const Produto& p, juce::Rectangle<float> barra)
 {
@@ -307,19 +274,107 @@ void paintSenImaxe (juce::Graphics& g, const Produto& p, juce::Rectangle<float> 
 }
 
 float suave (float t) { t = juce::jlimit (0.0f, 1.0f, t); return 1.0f - (1.0f - t) * (1.0f - t) * (1.0f - t); }
-int altoCaptura (int ancho) { return juce::jlimit (120, 200, juce::roundToInt ((float) ancho * 0.46f)); }
 } // namespace
 
-// ==================================================================== tarxeta
+// ==================================================================== a interface en perspectiva
+namespace
+{
+const juce::Colour fondoNoite { 0xff070a14 };
+
+// Unha sombra (ou un brillo) baixo un camiño, en píxeles físicos
+struct Sombra { juce::Colour cor; float radio; juce::Point<float> desprazamento; };
+
+// A interface dun plugin en perspectiva, coas súas sombras e un fío de luz no bordo, nunha imaxe
+// (en píxeles físicos). «caixa» devolve onde vai, en puntos e relativa ao centro.
+juce::Image montarCapa (const juce::Image& src, float w, float h, const Perspectiva& p, float escala, float radio,
+                        const std::vector<Sombra>& sombras, float bordo, juce::Rectangle<float>& caixa)
+{
+    juce::Rectangle<float> ci;
+    auto im = deformar (src, w, h, p, escala, radio, ci);
+    if (! im.isValid()) return {};
+    float marxe = 0.0f;
+    for (auto& s : sombras) marxe = juce::jmax (marxe, s.radio * 1.2f + juce::jmax (std::abs (s.desprazamento.x), std::abs (s.desprazamento.y)));
+    caixa = ci.expanded (marxe);
+    caixa = juce::Rectangle<float> (std::floor (caixa.getX() * escala) / escala, std::floor (caixa.getY() * escala) / escala,
+                                    std::ceil (caixa.getWidth() * escala) / escala, std::ceil (caixa.getHeight() * escala) / escala);
+    juce::Image out (juce::Image::ARGB, juce::jmax (1, juce::roundToInt (caixa.getWidth() * escala)), juce::jmax (1, juce::roundToInt (caixa.getHeight() * escala)), true);
+    juce::Graphics g (out);
+    const auto q = esquinas (w, h, p);
+    juce::Path quad;
+    auto fis = [&] (juce::Point<float> pt) { return (pt - caixa.getPosition()) * escala; };
+    quad.startNewSubPath (fis (q[0]));
+    for (int i = 1; i < 4; ++i) quad.lineTo (fis (q[(size_t) i]));
+    quad.closeSubPath();
+    for (auto& s : sombras)
+        juce::DropShadow (s.cor, juce::jmax (1, juce::roundToInt (s.radio * escala)),
+                          { juce::roundToInt (s.desprazamento.x * escala), juce::roundToInt (s.desprazamento.y * escala) }).drawForPath (g, quad);
+    g.setOpacity (1.0f);
+    g.drawImageAt (im, juce::roundToInt ((ci.getX() - caixa.getX()) * escala), juce::roundToInt ((ci.getY() - caixa.getY()) * escala));
+    if (bordo > 0.0f)
+    {
+        g.setColour (juce::Colours::white.withAlpha (bordo));
+        g.strokePath (quad, juce::PathStrokeType (escala));
+    }
+    return out;
+}
+
+// unha «captura» para os que non a teñen: o degradado e o nome grande
+juce::Image capturaFinxida (const Produto& p, int w, int h)
+{
+    juce::Image im (juce::Image::ARGB, w, h, true);
+    juce::Graphics g (im);
+    paintSenImaxe (g, p, { 0.0f, 0.0f, (float) w, (float) h }, (float) h * 0.3f);
+    return im;
+}
+
+float escalaDe (juce::Graphics& g) { return juce::jmax (1.0f, g.getInternalContext().getPhysicalPixelScaleFactor()); }
+
+void paintLedEstado (juce::Graphics& g, juce::Point<float> c, juce::Colour cor, float r = 5.0f)
+{
+    for (int i = 3; i >= 1; --i)
+    {
+        g.setColour (cor.withAlpha (0.10f * (float) (4 - i)));
+        g.fillEllipse (c.x - r - (float) i * 2.5f, c.y - r - (float) i * 2.5f, 2.0f * (r + (float) i * 2.5f), 2.0f * (r + (float) i * 2.5f));
+    }
+    g.setColour (cor);
+    g.fillEllipse (c.x - r, c.y - r, 2.0f * r, 2.0f * r);
+}
+
+// «v0.2.0 · ao día» ou «0.1.0 → 0.1.1» (a nova na cor do plugin)
+std::vector<Anaco> anacosCapa (Modelo& modelo, const Produto& p)
+{
+    const auto s = modelo.situacion (p);
+    const auto e = s.estado();
+    const auto ult = p.ultima ? p.ultima->version() : std::nullopt;
+    const auto ins = s.versionInstalada();
+    if (e == Estado::actualizacion && ins && ult)
+        return { { ins->texto(), col::crema2 }, { U (" → "), col::crema3 }, { ult->texto(), acento (p.nome) } };
+    if (e == Estado::soLocal)
+        return { { p.versionLocal ? tr ("local") + " " + p.versionLocal->texto() : tr ("Aínda sen publicar"), col::crema3 } };
+    std::vector<Anaco> r;
+    const auto vv = e == Estado::copiaVella ? ult : (ins ? ins : ult);   // (a copia vella é a do sistema)
+    if (vv) r.push_back ({ "v" + vv->texto() + U (" · "), col::crema3 });
+    auto est = textoPastilla (e).toLowerCase();
+    if (e == Estado::incompleto)
+        est = juce::String ((int) p.plugins.size() - s.faltan().size()) + "/" + juce::String (p.plugins.size());
+    r.push_back ({ est, e == Estado::copiaVella ? col::ouro : col::crema3 });
+    return r;
+}
+} // namespace
+
+// ==================================================================== a capa dun produto
 Tarxeta::Tarxeta (Modelo& m, std::function<void (const Produto&)> af)
     : modelo (m), abrirFicha (std::move (af))
 {
+    accion.getProperties().set ("fontSize", 12.0);
     accion.onClick = [this] { facerAccion (modelo, this, produto); };
     mais.getProperties().set ("icona", "mais");
+    mais.getProperties().set ("redonda", true);
     mais.setTitle (tr ("Máis"));
     mais.setTooltip (tr ("Notas da versión, volver atrás, manual, presets, reinstalar, desinstalar…"));
     mais.onClick = [this] { menuProduto (modelo, &mais, produto, abrirFicha); };
-    for (auto* b : { &accion, &mais }) addAndMakeVisible (b);
+    addAndMakeVisible (accion);
+    addChildComponent (mais);
     setWantsKeyboardFocus (true);
     setMouseCursor (juce::MouseCursor::PointingHandCursor);
     accion.setMouseCursor (juce::MouseCursor::PointingHandCursor);
@@ -328,6 +383,7 @@ Tarxeta::Tarxeta (Modelo& m, std::function<void (const Produto&)> af)
 
 void Tarxeta::mostrar (const Produto& p)
 {
+    if (p.id() != produto.id()) anchoCache = 0;
     produto = p;
     const auto s = modelo.situacion (p);
     const auto e = s.estado();
@@ -337,11 +393,11 @@ void Tarxeta::mostrar (const Produto& p)
     traballaba = traballa;
     for (auto* b : { &accion, &mais }) b->getProperties().set ("led", (juce::int64) luz.getARGB());
     estiloAccion (accion, e);
+    if (e == Estado::soLocal || e == Estado::senDatos) { accion.getProperties().remove ("estilo"); accion.getProperties().set ("estilo", "escura"); }
     accion.setButtonText (textoAccion (e));
     accion.setTooltip (axudaAccion (s));
     accion.setDescription (textoAccion (e) + " " + p.nome);
     accion.setVisible (textoAccion (e).isNotEmpty() && ! traballa);
-    mais.setVisible (! accion.isVisible() && ! traballa);
     mais.setDescription (tr ("Máis opcións de %1", p.nome));
     setTitle (p.nome);
     setDescription (p.descricion + ". " + textoPastilla (e));
@@ -350,31 +406,24 @@ void Tarxeta::mostrar (const Produto& p)
     repaint();
 }
 
-int Tarxeta::alto (int ancho) { return altoCaptura (ancho) + 88; }
+int Tarxeta::alto (int ancho) { return ancho + 58; }
 
-float Tarxeta::alzado() const { return -3.0f * sobre + 14.0f * (1.0f - suave (aparicion)); }
+float Tarxeta::alzado() const { return -4.0f * sobre + 16.0f * (1.0f - suave (aparicion)); }
 
-juce::Rectangle<float> Tarxeta::caixa() const
+juce::Rectangle<float> Tarxeta::capa() const
 {
-    return getLocalBounds().toFloat().reduced ((float) marxe).translated (0.0f, alzado());
-}
-
-juce::Rectangle<float> Tarxeta::zonaVersion() const
-{
-    const auto c = caixa();
-    const float fy = c.getY() + (float) altoCaptura ((int) c.getWidth()) - 24.0f + 58.0f;
-    const float fin = accion.isVisible() ? (float) accion.getX() - 8.0f : mais.isVisible() ? (float) mais.getX() - 8.0f : c.getRight() - 16.0f;
-    return { c.getX() + 16.0f, fy, fin - (c.getX() + 16.0f), 36.0f };
+    const float a = (float) (getWidth() - 2 * marxe);
+    return juce::Rectangle<float> ((float) marxe, (float) marxe + alzado(), a, a);
 }
 
 void Tarxeta::resized()
 {
-    const auto c = caixa();
-    const int fy = juce::roundToInt (c.getY() + (float) altoCaptura ((int) c.getWidth()) - 24.0f + 58.0f);
-    const int dereita = juce::roundToInt (c.getRight()) - 16;
-    const int aw = juce::jmin (Look::anchoTecla (accion, 30), (int) c.getWidth() / 2);
-    accion.setBounds (dereita - aw, fy, aw, 36);
-    mais.setBounds (dereita - 32, fy + 2, 32, 32);
+    const auto c = capa().toNearestInt();
+    const int aw = Look::anchoTecla (accion, 26);
+    accion.setBounds (c.getRight() - 12 - aw, c.getBottom() - 12 - 30, aw, 30);
+    mais.setBounds (c.getX() + 12, c.getBottom() - 12 - 30, 30, 30);
+    const bool ve = (sobre > 0.4f || hasKeyboardFocus (true)) && ! modelo.traballando (produto);
+    if (mais.isVisible() != ve) mais.setVisible (ve);
 }
 
 bool Tarxeta::hitTest (int x, int y)
@@ -396,14 +445,14 @@ bool Tarxeta::animar (float dt)
     const float obx = (forzarSobre || (isMouseOver (true) && isEnabled())) ? 1.0f : 0.0f;
     if (std::abs (sobre - obx) > 0.001f)
     {
-        sobre += (obx - sobre) * juce::jmin (1.0f, dt * 12.0f);
+        sobre += (obx - sobre) * juce::jmin (1.0f, dt * 10.0f);
         if (std::abs (sobre - obx) < 0.003f) sobre = obx;
         cambio = true;
     }
     if (aparicion < 1.0f)
     {
         if (atraso > 0.0f) atraso -= dt;
-        else aparicion = juce::jmin (1.0f, aparicion + dt / 0.45f);
+        else aparicion = juce::jmin (1.0f, aparicion + dt / 0.5f);
         setAlpha (suave (aparicion * 1.4f));
         cambio = true;
     }
@@ -413,121 +462,122 @@ bool Tarxeta::animar (float dt)
     return cambio;
 }
 
-void Tarxeta::paintSenCaptura (juce::Graphics& g, juce::Rectangle<float> r)
-{
-    paintSenImaxe (g, produto, r, css (26.0f));
-}
-
 void Tarxeta::paint (juce::Graphics& g)
 {
-    const auto c = caixa();
+    const auto c = capa();
+    const float k = c.getWidth() / 250.0f;   // as medidas da maqueta van para 250 px
     const auto s = modelo.situacion (produto);
     const auto e = s.estado();
     const auto luz = acento (produto.nome);
-    const float rad = 16.0f;
+    const float rad = 18.0f;
+    const bool traballa = modelo.traballando (produto);
 
-    // a sombra e, co rato enriba, o brillo da cor do plugin
-    paintSombra (g, c, rad, juce::Colours::black.withAlpha (0.35f + 0.10f * sobre), 22.0f + 8.0f * sobre, 12.0f + 4.0f * sobre);
-    if (sobre > 0.01f) paintSombra (g, c, rad, luz.withAlpha (0.16f * sobre), 26.0f, 0.0f);
+    // a sombra e, co rato enriba, o brillo da cor
+    paintSombra (g, c, rad, juce::Colours::black.withAlpha (0.5f), 26.0f, 16.0f);
+    if (sobre > 0.01f) paintSombra (g, c, rad, luz.withAlpha (0.28f * sobre), 30.0f, 4.0f);
 
     juce::Path forma;
     forma.addRoundedRectangle (c, rad);
-    g.setGradientFill (juce::ColourGradient (col::panel1, 0.0f, c.getY(), col::panel2, 0.0f, c.getBottom(), false));
-    g.fillPath (forma);
-
-    // a captura a sangue, fundida co panel e cun tinte da súa cor
-    const int hc = altoCaptura ((int) c.getWidth());
-    const auto zc = c.withHeight ((float) hc);
     {
         juce::Graphics::ScopedSaveState ss (g);
         g.reduceClipRegion (forma);
-        auto im = modelo.miniatura (produto);
-        if (im.isValid())
+        // o fondo: un degradado tinguido e un brillo da cor abaixo
+        g.setGradientFill (juce::ColourGradient (luz.interpolatedWith (juce::Colour (0xff10142a), 0.72f), c.getX() + c.getWidth() * 0.2f, c.getY(),
+                                                 juce::Colour (0xff0b0f1f), c.getRight() - c.getWidth() * 0.15f, c.getBottom(), false));
+        g.fillRect (c);
         {
-            g.setColour (col::visor);
-            g.fillRect (zc);
-            paintCuberta (g, im, zc, 1.0f + 0.05f * sobre, 0.92f);
+            juce::Graphics::ScopedSaveState s2 (g);
+            const auto ctr = juce::Point<float> (c.getCentreX(), c.getY() + c.getHeight() * 1.1f);
+            const float rx = 260.0f * k * (1.0f + 0.12f * sobre), ry = 200.0f * k * (1.0f + 0.12f * sobre);
+            g.addTransform (juce::AffineTransform::scale (1.0f, ry / rx, ctr.x, ctr.y));
+            juce::ColourGradient gl (luz.withAlpha (0.95f), ctr.x, ctr.y, luz.withAlpha (0.0f), ctr.x + rx, ctr.y, true);
+            gl.addColour (0.35, luz.withAlpha (0.5f));
+            gl.addColour (0.7, luz.withAlpha (0.0f));
+            g.setGradientFill (gl);
+            g.fillRect (juce::Rectangle<float> (ctr.x - rx, ctr.y - rx, rx * 2.0f, rx * 2.0f));
         }
-        else paintSenCaptura (g, zc.withTrimmedBottom (18.0f));
-        // primeiro o tinte, e por riba o fundido á cor que ten o panel nesa altura (sen bordo)
-        g.setGradientFill (juce::ColourGradient (luz.withAlpha (0.22f), 0.0f, zc.getBottom(), luz.withAlpha (0.0f), 0.0f, zc.getBottom() - zc.getHeight() * 0.6f, false));
-        g.fillRect (zc);
-        const auto fondo = col::panel1.interpolatedWith (col::panel2, zc.getHeight() / c.getHeight());
-        juce::ColourGradient fundido (fondo.withAlpha (0.0f), 0.0f, zc.getY() + zc.getHeight() * 0.35f, fondo, 0.0f, zc.getBottom(), false);
-        fundido.addColour (0.7, fondo.withAlpha (0.55f));
-        g.setGradientFill (fundido);
-        g.fillRect (zc.withTrimmedTop (zc.getHeight() * 0.35f - 1.0f));
+        // a interface inclinada (gardada ao seu tamaño e escala)
+        const float esc = escalaDe (g);
+        auto mini = modelo.miniatura (produto);
+        const bool conImaxe = mini.isValid();
+        const float iw = 250.0f * k;
+        if (anchoCache != (int) c.getWidth() || ! juce::approximatelyEqual (escalaCache, esc) || tinhaImaxe != conImaxe || ! deformada.isValid())
+        {
+            const auto fonte = conImaxe ? mini : capturaFinxida (produto, 500, 320);
+            const float ih = iw * (float) fonte.getHeight() / (float) fonte.getWidth();
+            deformada = montarCapa (fonte, iw, ih, { -18.0f, 6.0f, 0.0f, 700.0f * k }, esc, 8.0f * k,
+                                    { { juce::Colours::black.withAlpha (0.67f), 40.0f * k, { -20.0f * k, 30.0f * k } } }, 0.09f, caixaDeformada);
+            anchoCache = (int) c.getWidth();
+            escalaCache = esc;
+            tinhaImaxe = conImaxe;
+        }
+        if (deformada.isValid())
+        {
+            const float ih = conImaxe ? iw * (float) mini.getHeight() / (float) mini.getWidth() : iw * 0.64f;
+            const auto centro = juce::Point<float> (c.getX() + 30.0f * k + iw * 0.5f, c.getY() + 44.0f * k + ih * 0.5f);
+            // co rato: un chisco máis cerca e cara á esquerda, coma se se endereitase
+            const float z = 1.0f + 0.035f * sobre;
+            const auto t = juce::AffineTransform::scale (1.0f / esc)
+                               .translated (centro.x + caixaDeformada.getX(), centro.y + caixaDeformada.getY())
+                               .scaled (z, z, centro.x, centro.y)
+                               .translated (-6.0f * k * sobre, -3.0f * k * sobre);
+            g.setOpacity (1.0f);
+            g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
+            g.drawImageTransformed (deformada, t);
+        }
+        // abaixo, para que o nome e as teclas se lean
+        g.setGradientFill (juce::ColourGradient (juce::Colours::black.withAlpha (0.0f), 0.0f, c.getBottom() - 70.0f * k,
+                                                 juce::Colours::black.withAlpha (accion.isVisible() || traballa ? 0.35f : 0.0f), 0.0f, c.getBottom(), false));
+        g.fillRect (c.withTop (c.getBottom() - 70.0f * k));
+        // o nome curto arriba á esquerda (cun degradado para que se lea sobre a interface)
+        g.setGradientFill (juce::ColourGradient (luz.interpolatedWith (juce::Colour (0xff10142a), 0.72f).withAlpha (0.7f), 0.0f, c.getY(),
+                                                 juce::Colours::transparentBlack, 0.0f, c.getY() + 46.0f * k, false));
+        g.fillRect (c.withHeight (46.0f * k));
+        g.setColour (col::crema.withAlpha (0.82f));
+        g.setFont (cond (css (13.0f)).withExtraKerningFactor (0.2f));
+        g.drawText (upper (produto.nomeCurto()), juce::Rectangle<float> (c.getX() + 18.0f, c.getY() + 13.0f, c.getWidth() - 56.0f, 22.0f),
+                    juce::Justification::centredLeft, true);
     }
-    g.setColour (sobre > 0.01f ? luz.withAlpha (0.06f + 0.4f * sobre) : juce::Colours::white.withAlpha (0.06f));
+    g.setColour (sobre > 0.01f ? luz.withAlpha (0.08f + 0.4f * sobre) : juce::Colours::white.withAlpha (0.063f));
     g.drawRoundedRectangle (c.reduced (0.5f), rad, 1.0f);
     if (hasKeyboardFocus (false))
     {
         g.setColour (luz.withAlpha (0.95f));
-        g.drawRoundedRectangle (c.expanded (1.5f), rad + 1.5f, 2.0f);
+        g.drawRoundedRectangle (c.expanded (2.0f), rad + 2.0f, 2.0f);
     }
 
-    // a pastilla do estado (ou o ✓ ao rematar), arriba á dereita sobre a captura
-    const bool traballa = modelo.traballando (produto);
+    // o LED do estado (ou o ✓ ao rematar)
     if (visto > 0.0f)
     {
-        const auto t = tr ("Feito");
-        const float w = anchoPastilla (t);
-        auto r = juce::Rectangle<float> (c.getRight() - 10.0f - w, c.getY() + 10.0f, w, 24.0f);
         juce::Graphics::ScopedSaveState ss (g);
         g.setOpacity (juce::jmin (1.0f, visto * 3.0f));
-        paintPastilla (g, r, t, col::verde, false);
-        paintVisto (g, r.withWidth (22.0f).translated (5.0f, 0.0f).reduced (4.0f), col::verde, 1.8f);
+        const auto r = juce::Rectangle<float> (c.getRight() - 40.0f, c.getY() + 8.0f, 30.0f, 30.0f);
+        g.setColour (col::verde.withAlpha (0.2f));
+        g.fillEllipse (r);
+        paintVisto (g, r.reduced (7.0f), col::verde, 2.0f);
     }
-    else if (! traballa)
-    {
-        const auto t = textoPastilla (e);
-        const float w = anchoPastilla (t);
-        paintPastilla (g, { c.getRight() - 10.0f - w, c.getY() + 10.0f, w, 24.0f }, t, corEstado (e));
-    }
+    else paintLedEstado (g, { c.getRight() - 17.0f, c.getY() + 17.0f }, corEstado (e));
 
-    // o nome e a descrición
-    const float y0 = c.getY() + (float) hc - 24.0f;
-    g.setColour (col::crema);
-    g.setFont (cond (css (17.0f)));
-    g.drawText (produto.nome, juce::Rectangle<float> (c.getX() + 16.0f, y0, c.getWidth() - 32.0f, 24.0f), juce::Justification::centredLeft, true);
-    g.setColour (col::crema2);
-    g.setFont (body (css (12.5f)));
-    g.drawText (produto.descricion.isNotEmpty() ? produto.descricion : juce::String (U ("—")),
-                juce::Rectangle<float> (c.getX() + 16.0f, y0 + 26.0f, c.getWidth() - 32.0f, 18.0f), juce::Justification::centredLeft, true);
-
-    // o pé: o progreso, ou a versión (e a tecla)
+    // o progreso, abaixo na capa
     if (traballa)
-        paintProgreso (g, modelo, produto, { c.getX() + 16.0f, y0 + 58.0f, c.getWidth() - 32.0f, 36.0f });
-    else
     {
-        auto zv = zonaVersion();
-        paintAnacos (g, anacosVersion (modelo, produto), zv, body (css (12.0f)));
-        if (e == Estado::actualizacion && produto.ultima && zv.contains (getMouseXYRelative().toFloat()) && isMouseOver (false))
-        {
-            // o clic abre as notas: subliñado
-            const auto as = anacosVersion (modelo, produto);
-            float w = 0.0f;
-            for (auto& a : as) w += anchoTexto (body (css (12.0f)), a.t);
-            g.setColour (luz.withAlpha (0.6f));
-            g.fillRect (zv.getX(), zv.getCentreY() + 9.0f, w, 1.0f);
-        }
+        const auto barra = juce::Rectangle<float> (c.getX() + 12.0f, c.getBottom() - 42.0f, c.getWidth() - 24.0f, 30.0f);
+        g.setColour (juce::Colour (0xe60b0f1f));
+        g.fillRoundedRectangle (barra, 10.0f);
+        paintProgreso (g, modelo, produto, barra);
     }
-}
 
-void Tarxeta::mouseEnter (const juce::MouseEvent&) { rato = true; }
-void Tarxeta::mouseExit (const juce::MouseEvent&) { rato = false; repaint(); }
-void Tarxeta::mouseMove (const juce::MouseEvent&) { if (modelo.situacion (produto).estado() == Estado::actualizacion) repaint (zonaVersion().toNearestInt().expanded (2)); }
+    // debaixo: o nome de verdade e a versión
+    g.setColour (col::crema);
+    g.setFont (cond (css (15.0f)));
+    g.drawText (produto.nome, juce::Rectangle<float> (c.getX(), c.getBottom() + 12.0f, c.getWidth(), 22.0f), juce::Justification::centredLeft, true);
+    paintAnacos (g, anacosCapa (modelo, produto), { c.getX(), c.getBottom() + 36.0f, c.getWidth(), 18.0f }, body (css (12.5f)));
+}
 
 void Tarxeta::mouseUp (const juce::MouseEvent& e)
 {
     if (e.mods.isPopupMenu()) { menuProduto (modelo, this, produto, abrirFicha); return; }
-    if (! e.mouseWasClicked() || ! caixa().contains (e.position)) return;
-    if (zonaVersion().contains (e.position) && produto.ultima && modelo.situacion (produto).estado() == Estado::actualizacion
-        && ! modelo.traballando (produto))
-    {
-        paneis::notas (modelo, this, produto);
-        return;
-    }
+    if (! e.mouseWasClicked()) return;
     if (abrirFicha) abrirFicha (produto);
 }
 
@@ -541,6 +591,327 @@ bool Tarxeta::keyPressed (const juce::KeyPress& k)
         if (k == juce::KeyPress::upKey)    { mover (this, 0, -1); return true; }
         if (k == juce::KeyPress::downKey)  { mover (this, 0, 1); return true; }
     }
+    return false;
+}
+
+// ==================================================================== o heroe
+Heroe::Heroe (Modelo& m, std::function<void (const Produto&)> af) : modelo (m), abrirFicha (std::move (af))
+{
+    principal.getProperties().set ("primaria", true);
+    principal.getProperties().set ("fontSize", 14.0);
+    principal.getProperties().set ("grande", true);
+    for (auto* b : { &novidades, &ficha })
+    {
+        b->getProperties().set ("estilo", "escura");
+        b->getProperties().set ("fontSize", 14.0);
+    }
+    novidades.setButtonText (tr ("Ver novidades"));
+    ficha.setButtonText (tr ("Abrir ficha"));
+    principal.onClick = [this]
+    {
+        if (auto* p = produto (actual))
+        {
+            const auto e = modelo.situacion (*p).estado();
+            if (cambiaPlugins (e)) facerAccion (modelo, this, *p);
+            else if (abrirFicha) abrirFicha (*p);
+        }
+    };
+    novidades.onClick = [this] { if (auto* p = produto (actual)) paneis::notas (modelo, this, *p); };
+    ficha.onClick = [this] { if (auto* p = produto (actual)) if (abrirFicha) abrirFicha (*p); };
+    for (auto* b : { &principal, &novidades, &ficha }) addAndMakeVisible (b);
+    setWantsKeyboardFocus (true);
+    setTitle (tr ("Destacados"));
+    setHelpText (tr ("← →: o destacado anterior ou o seguinte"));
+}
+
+int Heroe::alto (int ancho) { return ancho >= 1000 ? 500 : 426; }
+
+const Produto* Heroe::produto (int i) const
+{
+    if (i < 0 || i >= slides.size()) return nullptr;
+    for (auto& p : modelo.produtos())
+        if (p.id() == slides[i]) return &p;
+    return nullptr;
+}
+
+void Heroe::actualizar()
+{
+    // primeiro os que se actualizan, despois os que non están instalados e despois os últimos publicados
+    juce::StringArray novos;
+    std::vector<const Produto*> resto;
+    for (auto& p : modelo.produtos())
+    {
+        const auto e = modelo.situacion (p).estado();
+        if (e == Estado::actualizacion || e == Estado::incompleto) novos.add (p.id());
+    }
+    for (auto& p : modelo.produtos())
+        if (modelo.situacion (p).estado() == Estado::nonInstalado) novos.add (p.id());
+    for (auto& p : modelo.produtos())
+        if (p.ultima && ! novos.contains (p.id())) resto.push_back (&p);
+    std::stable_sort (resto.begin(), resto.end(), [] (const Produto* a, const Produto* b) { return a->ultima->publicado > b->ultima->publicado; });
+    for (auto* p : resto)
+    {
+        if (novos.size() >= 3) break;
+        novos.add (p->id());
+    }
+    while (novos.size() > 5) novos.remove (novos.size() - 1);
+    if (novos != slides)
+    {
+        const auto antes = slides[actual];
+        slides = novos;
+        actual = juce::jmax (0, slides.indexOf (antes));
+        anterior = -1;
+        mestura = 1.0f;
+    }
+    textos();
+}
+
+void Heroe::textos()
+{
+    auto* p = produto (actual);
+    if (p == nullptr) return;
+    const auto s = modelo.situacion (*p);
+    const auto e = s.estado();
+    const auto luz = acento (p->nome);
+    juce::String tam;
+    if (p->ultima)
+        if (auto* a = p->ultima->arquivo(); a != nullptr && a->tamano > 0) tam = tamano (a->tamano);
+    juce::String t;
+    if (e == Estado::actualizacion || e == Estado::incompleto) t = tam.isNotEmpty() ? tr ("Actualizar · %1", tam) : tr ("Actualizar");
+    else if (e == Estado::nonInstalado) t = tam.isNotEmpty() ? tr ("Instalar · %1", tam) : tr ("Instalar");
+    else if (e == Estado::copiaVella) t = tr ("Quitar a vella");
+    else t = tr ("Abrir ficha");
+    if (modelo.traballando (*p))
+    {
+        const double v = modelo.traballos.at (p->id());
+        t = maiuscula1 (tr (modelo.fases.count (p->id()) ? modelo.fases.at (p->id()) : juce::String ("traballando")))
+            + (v >= 0.0 && v < 1.0 ? U (" · ") + juce::String (juce::roundToInt (v * 100.0)) + " %" : juce::String (U ("…")));
+    }
+    principal.setButtonText (t);
+    principal.setTooltip (cambiaPlugins (e) ? axudaAccion (s) : juce::String());
+    principal.setEnabled (! modelo.traballando (*p));
+    novidades.setVisible (p->ultima.has_value());
+    ficha.setVisible (cambiaPlugins (e));
+    for (auto* b : { &principal, &novidades, &ficha }) b->getProperties().set ("led", (juce::int64) luz.getARGB());
+    setDescription (p->nome + ". " + p->descricion);
+    resized();
+    repaint();
+}
+
+void Heroe::ir (int i)
+{
+    if (slides.size() < 2) return;
+    i = (i + slides.size()) % slides.size();
+    if (i == actual) return;
+    anterior = actual;
+    actual = i;
+    mestura = 0.0f;
+    tempo = 0.0f;
+    repaint();
+}
+
+bool Heroe::animar (float dt)
+{
+    bool cambio = false;
+    if (! isMouseOver (true) && ! hasKeyboardFocus (true)) tempo += dt;
+    if (tempo > 7.0f && slides.size() > 1) ir (actual + 1);
+    if (mestura < 1.0f)
+    {
+        const bool antes = mestura < 0.5f;
+        mestura = juce::jmin (1.0f, mestura + dt / 0.7f);
+        if (antes && mestura >= 0.5f) textos();
+        const float a = mestura < 0.5f ? 1.0f - 2.0f * mestura : 2.0f * mestura - 1.0f;
+        for (auto* b : { &principal, &novidades, &ficha }) b->setAlpha (a);
+        cambio = true;
+    }
+    if (auto* p = produto (actual); p != nullptr && modelo.traballando (*p)) { textos(); cambio = true; }
+    if (cambio) repaint();
+    return cambio;
+}
+
+juce::Image Heroe::arte (int i, float escala)
+{
+    auto* p = produto (i);
+    if (p == nullptr) return {};
+    auto& a = artes[p->id()];
+    const int W = getWidth(), H = getHeight();
+    if (a.im.isValid() && a.w == W && a.h == H && juce::approximatelyEqual (a.escala, escala)) return a.im;
+    a.w = W; a.h = H; a.escala = escala;
+    const auto luz = acento (p->nome);
+    juce::Image im (juce::Image::ARGB, juce::jmax (1, juce::roundToInt ((float) W * escala)), juce::jmax (1, juce::roundToInt ((float) H * escala)), true);
+    {
+        juce::Graphics g (im);
+        g.addTransform (juce::AffineTransform::scale (escala));
+        const auto r = juce::Rectangle<float> ((float) W, (float) H);
+        g.setColour (juce::Colour (0xff0a0d1c));
+        g.fillRect (r);
+        auto brillo = [&] (juce::Point<float> c, float rx, float ry, juce::Colour cor)
+        {
+            juce::Graphics::ScopedSaveState ss (g);
+            g.addTransform (juce::AffineTransform::scale (1.0f, ry / rx, c.x, c.y));
+            juce::ColourGradient gr (cor, c.x, c.y, cor.withAlpha (0.0f), c.x + rx, c.y, true);
+            gr.addColour (0.35, cor.withMultipliedAlpha (0.6f));
+            gr.addColour (0.7, cor.withAlpha (0.0f));
+            g.setGradientFill (gr);
+            g.fillRect (juce::Rectangle<float> (c.x - rx, c.y - rx, rx * 2.0f, rx * 2.0f));
+        };
+        brillo ({ r.getWidth() * 0.72f, r.getHeight() * 0.55f }, 700.0f, 420.0f, luz.withAlpha (0.33f));
+        brillo ({ r.getWidth() * 0.9f, 0.0f }, 900.0f, 500.0f, juce::Colour (0xff3a2c6a).interpolatedWith (luz.withMultipliedBrightness (0.45f), 0.4f).withAlpha (0.4f));
+
+        // a interface en perspectiva, á dereita (ou detrás, estreita)
+        juce::Image fonte;
+        if (! p->capturas.isEmpty())
+        {
+            const auto url = p->capturas[0];
+            fonte = modelo.capturaSeHai (url);
+            if (! fonte.isValid() && modelo.escenaActual.isNotEmpty()) fonte = modelo.captura (url);   // (a captura: sen fíos)
+            if (! fonte.isValid() && ! pedidas.contains (url))
+            {
+                // a enteira, nun fío; mentres, a miniatura
+                pedidas.add (url);
+                juce::Component::SafePointer<Heroe> sp (this);
+                const auto id = p->id();
+                modelo.pedirCaptura (url, [sp, id] (juce::Image)
+                {
+                    if (sp == nullptr) return;
+                    sp->artes.erase (id);
+                    sp->repaint();
+                });
+            }
+        }
+        if (! fonte.isValid()) fonte = modelo.miniatura (*p);
+        if (! fonte.isValid()) fonte = capturaFinxida (*p, 900, 540);
+        const bool estr = W < 1000;
+        const float sw = estr ? (float) W * 0.95f : juce::jlimit (640.0f, 1100.0f, 900.0f * (float) W / 1440.0f);
+        const float sh = sw * (float) fonte.getHeight() / (float) fonte.getWidth();
+        const float sx = estr ? (float) W - sw * 0.72f : (float) W + 60.0f * (float) W / 1440.0f - sw;
+        const float sy = estr ? 96.0f : 70.0f;
+        juce::Rectangle<float> caixa;
+        auto capa = montarCapa (fonte, sw, sh, { -24.0f, 8.0f, 1.0f, 1600.0f }, escala, 14.0f,
+                                { { juce::Colours::black.withAlpha (0.8f), 120.0f, { 0.0f, 60.0f } }, { luz.withAlpha (0.27f), 120.0f, {} } }, 0.08f, caixa);
+        if (capa.isValid())
+        {
+            g.setOpacity (1.0f);
+            g.drawImage (capa, caixa.translated (sx + sw * 0.5f, sy + sh * 0.5f), juce::RectanglePlacement::stretchToFit);
+        }
+        // o fundido: á esquerda (onde vai o texto) e abaixo, ata o fondo da xanela
+        juce::ColourGradient esq (fondoNoite, 0.0f, 0.0f, fondoNoite.withAlpha (0.0f), r.getWidth() * (estr ? 1.05f : 0.6f), 0.0f, false);
+        esq.addColour (estr ? 0.5 : 0.28 / 0.6, fondoNoite.withAlpha (estr ? 0.88f : 0.93f));
+        g.setGradientFill (esq);
+        g.fillRect (r);
+        g.setGradientFill (juce::ColourGradient (fondoNoite, 0.0f, r.getBottom(), fondoNoite.withAlpha (0.0f), 0.0f, r.getBottom() - r.getHeight() * (estr ? 0.45f : 0.35f), false));
+        g.fillRect (r);
+    }
+    a.im = im;
+    return im;
+}
+
+juce::Rectangle<float> Heroe::zonaPuntos (int i) const
+{
+    float x = estreito() ? 20.0f : 44.0f;
+    for (int j = 0; j < i; ++j) x += (j == actual ? 40.0f : 22.0f) + 8.0f;
+    return { x, (float) getHeight() - (estreito() ? 30.0f : 48.0f), i == actual ? 40.0f : 22.0f, 4.0f };
+}
+
+void Heroe::resized()
+{
+    const bool e = estreito();
+    const int x0 = e ? 20 : 44;
+    // o nome pode ser máis pequeno se non colle; as teclas, debaixo da descrición
+    const int yb = e ? 312 : 349;
+    int x = x0;
+    for (auto* b : { &principal, &novidades, &ficha })
+    {
+        if (! b->isVisible()) continue;
+        const int w = Look::anchoTecla (*b, 48);
+        if (x + w > getWidth() - x0) { b->setBounds (0, 0, 0, 0); continue; }
+        b->setBounds (x, yb, w, 50);
+        x += w + 12;
+    }
+}
+
+void Heroe::paint (juce::Graphics& g)
+{
+    const float esc = escalaDe (g);
+    g.setOpacity (1.0f);
+    if (anterior >= 0 && mestura < 1.0f)
+    {
+        auto a = arte (anterior, esc);
+        if (a.isValid()) g.drawImage (a, getLocalBounds().toFloat(), juce::RectanglePlacement::stretchToFit);
+    }
+    auto im = arte (actual, esc);
+    if (im.isValid())
+    {
+        g.setOpacity (anterior >= 0 ? suave (mestura) : 1.0f);
+        g.drawImage (im, getLocalBounds().toFloat(), juce::RectanglePlacement::stretchToFit);
+        g.setOpacity (1.0f);
+    }
+    // o texto do que se ve (na transición, o de antes desaparece e aparece o novo)
+    const auto* p = produto (mestura < 0.5f && anterior >= 0 ? anterior : actual);
+    if (p == nullptr) return;
+    const float alfa = anterior >= 0 && mestura < 1.0f ? (mestura < 0.5f ? 1.0f - 2.0f * mestura : 2.0f * mestura - 1.0f) : 1.0f;
+    const auto luz = acento (p->nome);
+    const auto e = modelo.situacion (*p).estado();
+    const bool es = estreito();
+    const float x0 = es ? 20.0f : 44.0f, ancho = juce::jmin (es ? (float) getWidth() - 40.0f : 640.0f, (float) getWidth() - 2.0f * x0);
+    juce::Graphics::ScopedSaveState ss (g);
+    g.setOpacity (alfa);
+    // a etiqueta: «● Novidade · 0.1.1»
+    juce::String et;
+    const auto v = p->ultima ? texto (p->ultima->version()) : juce::String();
+    if (e == Estado::actualizacion || e == Estado::incompleto) et = tr ("Novidade") + U (" · ") + v;
+    else if (e == Estado::nonInstalado) et = tr ("Sen instalar") + U (" · ") + v;
+    else if (e == Estado::copiaVella) et = tr ("Copia vella");
+    else et = tr ("Ao día") + (v.isNotEmpty() ? U (" · ") + v : juce::String());
+    et = U ("● ") + upper (et);
+    const auto fe = semi (css (11.0f)).withExtraKerningFactor (0.18f);
+    const float yb = es ? 128.0f : 150.0f;
+    auto badge = juce::Rectangle<float> (x0, yb, anchoTexto (fe, et) * 1.04f + 26.0f, 32.0f);
+    g.setColour (luz.withAlpha (0.10f));
+    g.fillRoundedRectangle (badge, 16.0f);
+    g.setColour (luz.withAlpha (0.27f));
+    g.drawRoundedRectangle (badge.reduced (0.5f), 16.0f, 1.0f);
+    g.setColour (luz);
+    g.setFont (fe);
+    g.drawText (et, badge.withTrimmedLeft (13.0f), juce::Justification::centredLeft, false);
+    // o nome, enorme
+    float tam = css (es ? 46.0f : 64.0f);
+    while (tam > css (30.0f) && anchoTexto (cond (tam), p->nome) > (float) getWidth() - x0 - 20.0f) tam -= 2.0f;
+    g.setColour (col::crema);
+    g.setFont (cond (tam).withExtraKerningFactor (-0.01f));
+    g.drawText (p->nome, juce::Rectangle<float> (x0 - 3.0f, badge.getBottom() + 14.0f, (float) getWidth(), tam * 1.05f), juce::Justification::centredLeft, false);
+    // a descrición (ata dúas liñas)
+    g.setColour (col::crema2);
+    g.setFont (body (css (16.0f)));
+    const float yd = badge.getBottom() + 14.0f + tam * 1.05f + 8.0f;
+    g.drawFittedText (p->descricion, juce::Rectangle<float> (x0, yd, ancho, 58.0f).toNearestInt(), juce::Justification::topLeft, 2, 1.0f);
+    // os puntos (liñas): o actual, máis longo e laranxa
+    for (int i = 0; i < slides.size() && slides.size() > 1; ++i)
+    {
+        g.setColour (i == actual ? col::laranxa : juce::Colours::white.withAlpha (0.14f));
+        g.fillRoundedRectangle (zonaPuntos (i), 2.0f);
+    }
+    if (hasKeyboardFocus (false))
+    {
+        g.setColour (luz.withAlpha (0.8f));
+        g.drawRoundedRectangle (getLocalBounds().toFloat().reduced (3.0f), 12.0f, 1.6f);
+    }
+}
+
+void Heroe::mouseUp (const juce::MouseEvent& e)
+{
+    if (! e.mouseWasClicked()) return;
+    for (int i = 0; i < slides.size(); ++i)
+        if (zonaPuntos (i).expanded (4.0f, 10.0f).contains (e.position)) { ir (i); return; }
+    if (e.position.x > (float) getWidth() * 0.55f)
+        if (auto* p = produto (actual)) if (abrirFicha) abrirFicha (*p);
+}
+
+bool Heroe::keyPressed (const juce::KeyPress& k)
+{
+    if (k == juce::KeyPress::leftKey) { ir (actual - 1); return true; }
+    if (k == juce::KeyPress::rightKey) { ir (actual + 1); return true; }
+    if (k == juce::KeyPress::returnKey) { if (auto* p = produto (actual)) if (abrirFicha) abrirFicha (*p); return true; }
     return false;
 }
 
@@ -708,8 +1079,9 @@ void FilaOrfo::paint (juce::Graphics& g)
 }
 
 // ==================================================================== lista
-Lista::Lista (Modelo& m, std::function<void (const Produto&)> af) : modelo (m), abrirFicha (std::move (af)), destacado (m)
+Lista::Lista (Modelo& m, std::function<void (const Produto&)> af) : modelo (m), abrirFicha (std::move (af)), heroe (m, abrirFicha), destacado (m)
 {
+    addChildComponent (heroe);
     pecharFaixa.getProperties().set ("icona", "pechar");
     pecharFaixa.setTitle (tr ("Pechar o aviso"));
     pecharFaixa.onClick = [this]
@@ -749,8 +1121,8 @@ void Lista::actualizar()
         orfos.push_back (std::make_unique<FilaOrfo> (modelo, i));
         addAndMakeVisible (*orfos.back());
     }
-    destacado.setVisible (destacado.hai());
     if (destacado.hai()) destacado.actualizar();
+    heroe.actualizar();
     colocar (getWidth());
     repaint();
 }
@@ -772,14 +1144,43 @@ int Lista::visibles() const
 void Lista::colocar (int ancho)
 {
     if (ancho <= 0) return;
-    const int m = ancho >= 1000 ? 40 : 20, gap = 20, M = Tarxeta::marxe;
-    const int cols = juce::jlimit (1, 4, (ancho - 2 * m + gap) / (290 + gap));
+    const int m = ancho >= 1000 ? 44 : 20, gap = 22, M = Tarxeta::marxe;
+    const int cols = juce::jlimit (1, 6, (ancho - 2 * m + gap) / (220 + gap));
     const int cw = (ancho - 2 * m - (cols - 1) * gap) / cols;
     const int ch = Tarxeta::alto (cw);
-    int y = 6;
     titulos.clear();
+    const auto& ps = modelo.produtos();
+    auto casa = [this] (const Produto& p)
+    {
+        if (! casaBusca (p, busca)) return false;
+        switch (seccion)
+        {
+            case 1: return casaPestana (p, Pestana::instrumentos);
+            case 2: return casaPestana (p, Pestana::efectos);
+            case 3: return casaPestana (p, Pestana::paquetes);
+            case 4: return pideActualizar (modelo.situacion (p).estado()) || modelo.traballando (p);
+            default: return true;
+        }
+    };
+    int instalados = 0, porActualizar = 0;
+    for (auto& p : ps)
+        if (casa (p))
+        {
+            instalados += modelo.situacion (p).relevantes().empty() ? 0 : 1;
+            porActualizar += pideActualizar (modelo.situacion (p).estado()) ? 1 : 0;
+        }
 
-    // o aviso de arriba: un erro (que se pecha), agardando polo DAW, «volve escanear» ou «sen conexión»
+    int y = 0;
+    // o inicio: o heroe; nas pestanas (e buscando), un título grande debaixo da barra
+    heroe.setVisible (inicio() && heroe.hai());
+    if (heroe.isVisible())
+    {
+        heroe.setBounds (0, 0, ancho, Heroe::alto (ancho));
+        y = heroe.getBottom() + 2;
+    }
+    else y = ancho >= 980 ? 96 : 128;
+
+    // o aviso: un erro (que se pecha), agardando polo DAW, «volve escanear» ou «sen conexión»
     const auto aviso = textoFaixa();
     const bool hai = aviso.isNotEmpty();
     pecharFaixa.setVisible (hai && ! (modelo.erro.isEmpty() && modelo.dawsAgardados.isEmpty() && modelo.lembranza.isEmpty()));
@@ -791,18 +1192,33 @@ void Lista::colocar (int ancho)
         tl.createLayout (as, (float) (ancho - 2 * m - 48 - 52));
         faixa = { m, y, ancho - 2 * m, juce::jmax (48, juce::roundToInt (tl.getHeight()) + 28) };
         pecharFaixa.setBounds (faixa.getRight() - 42, faixa.getY() + 9, 30, 30);
-        y = faixa.getBottom() + 18;
+        y = faixa.getBottom() + 26;
     }
     else faixa = {};
 
+    // o título: «A túa colección» (ou a pestana, ou a busca) e o resumo en maiúsculas
+    {
+        juce::String t, r;
+        if (busca.trim().isNotEmpty()) { t = U ("«") + busca.trim() + U ("»"); }
+        else if (seccion == 0) t = tr ("A túa colección");
+        else if (seccion == 4) t = tr ("Actualizacións");
+        else t = tr (titulo (seccion == 1 ? TipoProduto::instrumento : seccion == 2 ? TipoProduto::efecto : TipoProduto::paquete));
+        r = tr ("%1 instalados", juce::String (instalados)) + U (" · ")
+            + (porActualizar > 0 ? tr ("%1 por actualizar", juce::String (porActualizar)) : tr ("todo ao día"));
+        const bool grande = ! inicio();
+        titulos.push_back ({ t, { m, y, ancho - 2 * m, grande ? 44 : 28 }, -1, grande, r });
+        y += (grande ? 44 : 28) + 18;
+    }
+    destacado.setVisible (seccion == 4 && busca.trim().isEmpty() && destacado.hai());
     if (destacado.isVisible())
     {
         destacado.setBounds (m, y, ancho - 2 * m, destacado.alto (ancho - 2 * m));
         y = destacado.getBottom() + 26;
     }
 
-    // as seccións: instrumentos, efectos, paquetes (e os que aínda non están publicados, ao final)
+    // as capas: no inicio e buscando, por seccións; nas pestanas, todas xuntas
     auto tipoDe = [this] (const Produto& p) { return modelo.situacion (p).estado() == Estado::soLocal ? TipoProduto::desconecido : p.tipo; };
+    const bool porSeccions = seccion == 0;
     for (auto tp : { TipoProduto::instrumento, TipoProduto::efecto, TipoProduto::paquete, TipoProduto::desconecido })
     {
         std::vector<Tarxeta*> estas;
@@ -810,25 +1226,47 @@ void Lista::colocar (int ancho)
         {
             const auto& p = t->getProduto();
             if (tipoDe (p) != tp) continue;
-            const bool ve = casaPestana (p, pestana) && casaBusca (p, busca);
+            const bool ve = casa (p);
             t->setVisible (ve);
             if (ve) estas.push_back (t.get());
         }
         if (estas.empty()) continue;
-        titulos.push_back ({ tp == TipoProduto::desconecido ? tr ("Só neste ordenador (sen publicar)") : tr (titulo (tp)), { m, y, ancho - 2 * m, 22 }, (int) estas.size() });
-        y += 22 + 14;
+        if (porSeccions)
+        {
+            titulos.push_back ({ tp == TipoProduto::desconecido ? tr ("Só neste ordenador (sen publicar)") : tr (titulo (tp)), { m, y, ancho - 2 * m, 22 }, (int) estas.size(), false, {} });
+            y += 22 + 12;
+        }
         for (size_t i = 0; i < estas.size(); ++i)
         {
             const int c = (int) i % cols;
             if (i > 0 && c == 0) y += ch + gap;
             estas[i]->setBounds (m + c * (cw + gap) - M, y - M, cw + 2 * M, ch + 2 * M);
         }
-        y += ch + 30;
+        if (porSeccions) y += ch + 34;
+        else
+        {
+            // (todas seguidas: a seguinte sección continúa a reixa)
+            y += ch + gap;
+        }
     }
-    const bool orfosVisibles = ! orfos.empty() && pestana == Pestana::todo && busca.trim().isEmpty();
+    if (! porSeccions)
+    {
+        // reordenar en reixa continua as visibles de todas as seccións
+        std::vector<Tarxeta*> vs;
+        for (auto& t : tarxetas) if (t->isVisible()) vs.push_back (t.get());
+        int yy = titulos.empty() ? y : (destacado.isVisible() ? destacado.getBottom() + 26 : titulos.back().r.getBottom() + 18);
+        for (size_t i = 0; i < vs.size(); ++i)
+        {
+            const int c = (int) i % cols;
+            if (i > 0 && c == 0) yy += ch + gap;
+            vs[i]->setBounds (m + c * (cw + gap) - M, yy - M, cw + 2 * M, ch + 2 * M);
+        }
+        y = vs.empty() ? yy : yy + ch + 34;
+    }
+    const bool orfosVisibles = ! orfos.empty() && seccion == 0 && busca.trim().isEmpty();
     if (orfosVisibles)
     {
-        titulos.push_back ({ tr ("Outros de Escoita neste ordenador"), { m, y, ancho - 2 * m, 22 }, (int) orfos.size() });
+        titulos.push_back ({ tr ("Outros de Escoita neste ordenador"), { m, y, ancho - 2 * m, 22 }, (int) orfos.size(), false, {} });
         y += 22 + 14;
         for (auto& o : orfos) { o->setVisible (true); o->setBounds (m, y, ancho - 2 * m, 52); y += 60; }
         y += 20;
@@ -838,10 +1276,10 @@ void Lista::colocar (int ancho)
     baleiro = {};
     if (visibles() == 0 && ! tarxetas.empty())
     {
-        baleiro = { m, y + 20, ancho - 2 * m, 80 };
+        baleiro = { m, y + 10, ancho - 2 * m, 80 };
         y = baleiro.getBottom() + 20;
     }
-    setSize (ancho, y);
+    setSize (ancho, y + 20);
 }
 
 juce::String Lista::textoFaixa() const
@@ -860,12 +1298,24 @@ void Lista::paint (juce::Graphics& g)
     for (auto& t : titulos)
     {
         const auto r = t.r.toFloat();
-        g.setColour (col::crema);
-        g.setFont (cond (css (15.0f)));
+        if (t.n < 0)
+        {
+            // o título da páxina: grande, co resumo en maiúsculas pequenas ao lado
+            const auto f = cond (css (t.grande ? 32.0f : 20.0f));
+            g.setColour (col::crema);
+            g.setFont (f);
+            g.drawText (t.texto, r, juce::Justification::centredLeft, true);
+            const float w = anchoTexto (f, t.texto);
+            g.setColour (col::crema3);
+            drawCaps (g, t.resumo, r.withTrimmedLeft (w + 18.0f).translated (0.0f, t.grande ? 4.0f : 2.0f), juce::Justification::centredLeft, css (10.0f), 0.24f);
+            continue;
+        }
+        g.setColour (col::crema2);
+        g.setFont (cond (css (14.0f)));
         g.drawText (t.texto, r, juce::Justification::centredLeft, false);
-        const float w = anchoTexto (cond (css (15.0f)), t.texto);
+        const float w = anchoTexto (cond (css (14.0f)), t.texto);
         g.setColour (col::crema3);
-        drawCaps (g, juce::String (t.n), r.withTrimmedLeft (w + 12.0f).withWidth (40.0f).translated (0.0f, 1.5f), juce::Justification::centredLeft, css (10.0f), 0.22f);
+        drawCaps (g, juce::String (t.n), r.withTrimmedLeft (w + 10.0f).withWidth (40.0f).translated (0.0f, 1.5f), juce::Justification::centredLeft, css (10.0f), 0.22f);
     }
     if (! faixa.isEmpty())
     {
@@ -900,7 +1350,7 @@ void Lista::paint (juce::Graphics& g)
 
 bool Lista::animar (float dt)
 {
-    bool algo = false;
+    bool algo = animarHeroe (dt);
     for (auto& t : tarxetas)
         if (t->isVisible()) algo = t->animar (dt) || algo;
     return algo;
@@ -966,16 +1416,16 @@ Ficha::Ficha (Modelo& m) : modelo (m)
     accion.getProperties().set ("fontSize", 14.0);
     accion.onClick = [this] { facerAccion (modelo, this, produto); };
     manual.setButtonText (tr ("Manual"));
-    manual.getProperties().set ("estilo", "fantasma");
+    manual.getProperties().set ("estilo", "escura");
     manual.getProperties().set ("fontSize", 14.0);
     manual.onClick = [this] { modelo.abrirManual (produto); };
     presets.setButtonText (tr ("Presets"));
-    presets.getProperties().set ("estilo", "fantasma");
+    presets.getProperties().set ("estilo", "escura");
     presets.getProperties().set ("fontSize", 14.0);
     presets.setTooltip (tr ("Abrir o cartafol dos presets"));
     presets.onClick = [this] { for (auto& f : modelo.cartafolesPresets (produto)) f.revealToUser(); };
     mais.setButtonText (U ("⋯"));
-    mais.getProperties().set ("estilo", "fantasma");
+    mais.getProperties().set ("estilo", "escura");
     mais.getProperties().set ("fontSize", 16.0);
     mais.setTitle (tr ("Máis"));
     mais.setTooltip (tr ("Notas da versión, volver atrás, manual, presets, reinstalar, desinstalar…"));
@@ -995,7 +1445,7 @@ Ficha::Ficha (Modelo& m) : modelo (m)
     notas.setColour (juce::TextEditor::textColourId, col::crema2);
     notas.setColour (juce::TextEditor::highlightColourId, col::laranxa.withAlpha (0.35f));
     notas.setColour (juce::TextEditor::highlightedTextColourId, col::crema);
-    notas.setFont (body (css (13.0f)));
+    notas.setFont (body (css (14.0f)));
     notas.setLineSpacing (1.25f);
     notas.setIndents (16, 12);
     notas.setTitle (tr ("Novidades"));
@@ -1173,14 +1623,14 @@ void Ficha::colocar()
     pecharBtn.setBounds (r.getRight() - 36, r.getY() - 6, 36, 36);
     int y = r.getY() + 16 + 6;   // a etiqueta da categoría
     yNome = y;
-    y += 42;
+    y += 56;
     // a descrición (ata tres liñas)
     {
         juce::AttributedString as;
-        as.append (produto.descricion, body (css (14.0f)));
+        as.append (produto.descricion, body (css (16.0f)));
         juce::TextLayout tl;
         tl.createLayout (as, (float) r.getWidth());
-        altoDesc = juce::jmin (3 * 22, juce::roundToInt (tl.getHeight()) + 2);
+        altoDesc = juce::jmin (3 * 26, juce::roundToInt (tl.getHeight()) + 2);
     }
     yDesc = y;
     y += altoDesc + 18;
@@ -1224,7 +1674,7 @@ void Ficha::colocar()
     const int hs = filasSerie > 0 ? 24 + filasSerie * 26 + 8 : 0;
     const int abaixo = hv + (hs > 0 ? hs + 20 : 0);
     juce::AttributedString as;
-    as.append (notas.getText(), body (css (13.0f)));
+    as.append (notas.getText(), body (css (14.0f)));
     juce::TextLayout tl;
     tl.createLayout (as, (float) r.getWidth() - 40.0f);
     const int hTexto = juce::roundToInt (tl.getHeight() * 1.25f) + 28;
@@ -1298,36 +1748,40 @@ void Ficha::paint (juce::Graphics& g)
         g.fillRect (c);
         // a esquerda: a captura sobre un halo da cor do plugin
         const auto e = esquerda.toFloat();
-        g.setColour (juce::Colour (0xff080c18));
+        g.setColour (juce::Colour (0xff070a14));
         g.fillRect (e);
         {
             juce::Graphics::ScopedSaveState s2 (g);
             const auto ctr = juce::Point<float> (e.getCentreX(), e.getY() + e.getHeight() * 0.4f);
             g.addTransform (juce::AffineTransform::scale (1.0f, 400.0f / 600.0f, ctr.x, ctr.y));
-            juce::ColourGradient halo (luz.withAlpha (0.30f), ctr.x, ctr.y, luz.withAlpha (0.0f), ctr.x + 600.0f, ctr.y, true);
-            halo.addColour (0.35, luz.withAlpha (0.16f));
+            juce::ColourGradient halo (luz.withAlpha (0.42f), ctr.x, ctr.y, luz.withAlpha (0.0f), ctr.x + 600.0f, ctr.y, true);
+            halo.addColour (0.35, luz.withAlpha (0.22f));
             halo.addColour (0.7, luz.withAlpha (0.0f));
             g.setGradientFill (halo);
             g.fillRect (e.expanded (0.0f, e.getHeight()));
         }
+        // a captura en perspectiva sobre o halo (gardada para este índice, tamaño e escala)
         const auto zi = zonaImaxe();
+        const float esc = escalaDe (g);
         auto im = imaxe (indice);
-        paintSombra (g, zi, 12.0f, juce::Colours::black.withAlpha (0.6f), 34.0f, 26.0f);
+        const bool enteira = indice < produto.capturas.size() && modelo.capturaSeHai (produto.capturas[indice]).isValid();
+        if (! deformada.isValid() || indiceDeformada != indice || ! juce::approximatelyEqual (escalaDeformada, esc) || zonaDeformada != zi || (enteira && ! deformadaBoa))
         {
-            juce::Path p;
-            p.addRoundedRectangle (zi, 12.0f);
-            juce::Graphics::ScopedSaveState s3 (g);
-            g.reduceClipRegion (p);
-            if (im.isValid())
-            {
-                g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
-                g.setOpacity (1.0f);   // (drawImage usa o alfa da última cor)
-                g.drawImage (im, zi, juce::RectanglePlacement::stretchToFit);
-            }
-            else paintSenImaxe (g, produto, zi, css (40.0f));
+            const auto fonte = im.isValid() ? im : capturaFinxida (produto, 900, 560);
+            deformada = montarCapa (fonte, zi.getWidth() * 0.92f, zi.getWidth() * 0.92f * (float) fonte.getHeight() / (float) fonte.getWidth(),
+                                    { -16.0f, 6.0f, 0.5f, 1800.0f }, esc, 12.0f,
+                                    { { juce::Colours::black.withAlpha (0.75f), 70.0f, { 0.0f, 40.0f } }, { luz.withAlpha (0.3f), 90.0f, {} } }, 0.08f, caixaDeformada);
+            indiceDeformada = indice;
+            escalaDeformada = esc;
+            zonaDeformada = zi;
+            deformadaBoa = enteira;
         }
-        g.setColour (juce::Colours::white.withAlpha (0.06f));
-        g.drawRoundedRectangle (zi, 12.0f, 1.0f);
+        if (deformada.isValid())
+        {
+            g.setOpacity (1.0f);
+            g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
+            g.drawImage (deformada, caixaDeformada.translated (zi.getCentreX(), zi.getCentreY()), juce::RectanglePlacement::stretchToFit);
+        }
         // as miniaturas
         const auto zm = zonasMiniaturas();
         for (size_t i = 0; i < zm.size(); ++i)
@@ -1351,8 +1805,10 @@ void Ficha::paint (juce::Graphics& g)
         }
         // a dereita: o fondo
         const auto d = dereita.toFloat();
-        g.setGradientFill (juce::ColourGradient (col::panel1, 0.0f, d.getY(), col::panel2, 0.0f, d.getBottom(), false));
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff121831), 0.0f, d.getY(), juce::Colour (0xff0a0d1c), 0.0f, d.getBottom(), false));
         g.fillRect (d);
+        g.setColour (juce::Colours::white.withAlpha (0.05f));
+        g.fillRect (d.withWidth (1.0f));
     }
     g.setColour (juce::Colours::white.withAlpha (0.08f));
     g.drawRoundedRectangle (c.reduced (0.5f), rad, 1.0f);
@@ -1366,10 +1822,10 @@ void Ficha::paint (juce::Graphics& g)
     g.setColour (luz);
     drawCaps (g, categoria, r.withHeight (16.0f), juce::Justification::centredLeft, css (10.0f), 0.22f);
     g.setColour (col::crema);
-    g.setFont (cond (css (30.0f)));
-    g.drawFittedText (produto.nome, juce::Rectangle<float> (r.getX(), (float) yNome, r.getWidth() - 46.0f, 40.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.8f);
+    g.setFont (cond (css (38.0f)));
+    g.drawFittedText (produto.nome, juce::Rectangle<float> (r.getX(), (float) yNome, r.getWidth() - 46.0f, 50.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.8f);
     g.setColour (col::crema2);
-    g.setFont (body (css (14.0f)));
+    g.setFont (body (css (16.0f)));
     g.drawFittedText (produto.descricion, juce::Rectangle<float> (r.getX(), (float) yDesc, r.getWidth(), (float) altoDesc).toNearestInt(), juce::Justification::topLeft, 3, 1.0f);
 
     // os chips
@@ -1478,19 +1934,28 @@ Principal::Principal (Modelo& m)
 {
     setLookAndFeel (&look);
     setTitle ("Barullo Xestor");
-    // as pestanas: todo, instrumentos, efectos, paquetes (co reconto)
+    // a lista vai detrás de todo (o heroe pasa por baixo da barra)
+    vista.setViewedComponent (&lista, false);
+    vista.setScrollBarsShown (true, false);
+    vista.setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::never);
+    vista.getVerticalScrollBar().setAutoHide (true);
+    vista.setSingleStepSizes (0, 40);
+    addAndMakeVisible (vista);
+    addAndMakeVisible (barra);
+
+    // as pestanas: inicio, instrumentos, efectos, paquetes e (se as hai) actualizacións
     int orde = 1;
-    for (auto t : { Pestana::todo, Pestana::instrumentos, Pestana::efectos, Pestana::paquetes })
+    for (int i = 0; i < 5; ++i)
     {
-        auto b = std::make_unique<juce::TextButton> (t == Pestana::todo ? tr ("Todo") : t == Pestana::instrumentos ? tr ("Instrumentos")
-                                                     : t == Pestana::efectos ? tr ("Efectos") : tr ("Paquetes"));
+        auto b = std::make_unique<juce::TextButton> (i == 0 ? tr ("Inicio") : i == 1 ? tr ("Instrumentos") : i == 2 ? tr ("Efectos")
+                                                     : i == 3 ? tr ("Paquetes") : tr ("Actualizacións"));
         b->getProperties().set ("estilo", "pestana");
-        b->setToggleState (t == Pestana::todo, juce::dontSendNotification);
+        b->setToggleState (i == 0, juce::dontSendNotification);
         b->setExplicitFocusOrder (orde++);
-        b->onClick = [this, t]
+        b->onClick = [this, i]
         {
-            lista.pestana = t;
-            for (size_t i = 0; i < pestanaBtn.size(); ++i) pestanaBtn[i]->setToggleState ((int) i == (int) t, juce::dontSendNotification);
+            lista.seccion = i;
+            for (size_t j = 0; j < pestanaBtn.size(); ++j) pestanaBtn[j]->setToggleState ((int) j == i, juce::dontSendNotification);
             lista.colocar (lista.getWidth());
             vista.setViewPosition (0, 0);
             repaint();
@@ -1498,11 +1963,11 @@ Principal::Principal (Modelo& m)
         addAndMakeVisible (*b);
         pestanaBtn.push_back (std::move (b));
     }
-    // o buscador
+    // o buscador: ábrese coa lupa
     buscador.getProperties().set ("buscador", true);
     buscador.setTextToShowWhenEmpty (tr ("Buscar"), col::crema3);
     buscador.setFont (body (css (13.0f)));
-    buscador.setIndents (34, 0);
+    buscador.setIndents (16, 0);
     buscador.setJustification (juce::Justification::centredLeft);
     buscador.setColour (juce::TextEditor::backgroundColourId, juce::Colours::transparentBlack);
     buscador.setColour (juce::TextEditor::textColourId, col::crema);
@@ -1518,15 +1983,22 @@ Principal::Principal (Modelo& m)
         vista.setViewPosition (0, 0);
         recontos();
     };
-    buscador.onEscapeKey = [this] { buscador.clear(); lista.busca.clear(); lista.colocar (lista.getWidth()); recontos(); grabKeyboardFocus(); };
+    buscador.onEscapeKey = [this] { buscador.clear(); lista.busca.clear(); lista.colocar (lista.getWidth()); recontos(); abrirBusca (false); grabKeyboardFocus(); };
     buscador.onReturnKey = [this]
     {
-        // Intro: á primeira tarxeta que casa
+        // Intro: á primeira capa que casa
         for (auto* c : lista.getChildren())
             if (auto* t = dynamic_cast<Tarxeta*> (c); t != nullptr && t->isVisible()) { t->grabKeyboardFocus(); return; }
     };
-    addAndMakeVisible (buscador);
+    buscador.onFocusLost = [this] { if (buscador.getText().trim().isEmpty()) abrirBusca (false); };
+    addChildComponent (buscador);
 
+    for (auto* b : { &lupa, &refrescar, &axustes }) b->getProperties().set ("redonda", true);
+    lupa.getProperties().set ("icona", "lupa");
+    lupa.setTitle (tr ("Buscar"));
+    lupa.setTooltip (tr ("Buscar polo nome ou a descrición (Cmd/Ctrl + F)"));
+    lupa.onClick = [this] { abrirBusca (! buscando || buscador.getText().isEmpty() ? ! buscando : true); };
+    lupa.setExplicitFocusOrder (orde++);
     refrescar.getProperties().set ("icona", "refrescar");
     refrescar.setTitle (tr ("Comprobar agora"));
     refrescar.setTooltip (tr ("Preguntar agora a GitHub polas últimas versións (Cmd/Ctrl + R)."));
@@ -1537,8 +2009,7 @@ Principal::Principal (Modelo& m)
     axustes.setTooltip (tr ("Idioma, comprobar cada día, copia dos presets, copiar o informe, atallos do teclado…"));
     axustes.onClick = [this] { paneis::menuXestor (modelo, &axustes); };
     axustes.setExplicitFocusOrder (orde++);
-    addAndMakeVisible (refrescar);
-    addAndMakeVisible (axustes);
+    for (auto* b : { &lupa, &refrescar, &axustes }) addAndMakeVisible (b);
     volverProbar.getProperties().set ("primaria", true);
     volverProbar.setButtonText (tr ("Volver probar"));
     volverProbar.onClick = [this] { modelo.cargar (true); };
@@ -1560,16 +2031,10 @@ Principal::Principal (Modelo& m)
     novaVersion.onClick = [this] { paneis::xestorNovo (modelo, this); };
     addChildComponent (novaVersion);
 
-    vista.setViewedComponent (&lista, false);
-    vista.setScrollBarsShown (true, false);
-    vista.setScrollOnDragMode (juce::Viewport::ScrollOnDragMode::never);
-    vista.getVerticalScrollBar().setAutoHide (true);
-    vista.setSingleStepSizes (0, 40);
-    addAndMakeVisible (vista);
     addChildComponent (ficha);
     addChildComponent (modal);
     setWantsKeyboardFocus (true);
-    // co teclado: Tab percorre a cabeceira, as tarxetas (e as súas teclas) e o pé, na orde en que se ven
+    // co teclado: Tab percorre a barra, o heroe, as capas (e as súas teclas) e o pé, na orde en que se ven
     setFocusContainerType (juce::Component::FocusContainerType::keyboardFocusContainer);
     juce::Desktop::getInstance().addFocusChangeListener (this);
     modelo.addChangeListener (this);
@@ -1590,11 +2055,23 @@ void Principal::changeListenerCallback (juce::ChangeBroadcaster*) { actualizar()
 
 bool Principal::baleiro() const { return modelo.produtos().empty(); }
 
+void Principal::abrirBusca (bool a)
+{
+    if (a == buscando) return;
+    buscando = a;
+    buscador.setVisible (a);
+    resized();
+    if (a) buscador.grabKeyboardFocus();
+    repaint();
+}
+
 void Principal::recontos()
 {
-    const auto r = contar (modelo.produtos(), lista.busca);
-    for (size_t i = 0; i < pestanaBtn.size(); ++i)
-        pestanaBtn[i]->getProperties().set ("reconto", juce::String (r.de ((Pestana) i)));
+    const int n = (int) modelo.porActualizar().size();
+    auto& act = *pestanaBtn.back();
+    act.setButtonText (tr ("Actualizacións") + U (" · ") + juce::String (n));
+    act.setVisible (n > 0 && ! baleiro());
+    if (n == 0 && lista.seccion == 4) pestanaBtn.front()->onClick();
     resized();
     repaint();
 }
@@ -1610,7 +2087,7 @@ void Principal::actualizar()
     volverProbar.setVisible (baleiro() && ! modelo.cargando);
     vista.setVisible (! baleiro());
     for (auto& b : pestanaBtn) b->setVisible (! baleiro());
-    buscador.setVisible (! baleiro());
+    lupa.setVisible (! baleiro());
     lista.actualizar();
     ficha.refrescar();
     recontos();
@@ -1647,17 +2124,23 @@ void Principal::timerCallback()
             repaint();
         }
     }
-    if (isShowing()) lista.animar (dt);
+    // a barra escurece ao baixar
+    {
+        const int y = vista.getViewPositionY();
+        if ((y > 8) != (ultimoY > 8)) barra.repaint();
+        ultimoY = y;
+    }
+    if (isShowing() && ! ficha.isVisible()) lista.animar (dt);
     if (ficha.isVisible() && modelo.traballando (ficha.getProduto())) ficha.repaint();
 }
 
 bool Principal::keyPressed (const juce::KeyPress& k)
 {
     if (k == juce::KeyPress ('r', juce::ModifierKeys::commandModifier, 0) || k == juce::KeyPress::F5Key) { modelo.cargar (true); return true; }
-    if (k == juce::KeyPress ('f', juce::ModifierKeys::commandModifier, 0) && buscador.isVisible()) { buscador.grabKeyboardFocus(); buscador.selectAll(); return true; }
+    if (k == juce::KeyPress ('f', juce::ModifierKeys::commandModifier, 0) && lupa.isVisible()) { abrirBusca (true); buscador.grabKeyboardFocus(); buscador.selectAll(); return true; }
     if (k == juce::KeyPress::escapeKey && modal.isVisible()) { modal.pecharSen(); return true; }
     if (k == juce::KeyPress::escapeKey && ficha.isVisible()) { ficha.pechar(); return true; }
-    if (k == juce::KeyPress::escapeKey && buscador.getText().isNotEmpty()) { buscador.clear(); buscador.onTextChange(); return true; }
+    if (k == juce::KeyPress::escapeKey && buscando) { buscador.clear(); buscador.onTextChange(); abrirBusca (false); return true; }
     if (k == juce::KeyPress::escapeKey && ! modelo.dawsAgardados.isEmpty()) { modelo.deixarDeAgardar(); return true; }
     return false;
 }
@@ -1665,37 +2148,41 @@ bool Principal::keyPressed (const juce::KeyPress& k)
 int Principal::altoCompleto (int ancho)
 {
     lista.colocar (ancho);
-    return corpo.getY() + lista.getHeight() + pe.getHeight() + 10;
+    return lista.getHeight() + pe.getHeight();
 }
 
 void Principal::resized()
 {
     const int W = getWidth(), H = getHeight();
-    const int m = W >= 1000 ? 40 : 20;
-    const int fila = 22;
-    // a cabeceira: a icona e o nome; as pestanas; o buscador e as dúas iconas
-    const int anchoLogo = 46 + juce::roundToInt (juce::jmax (anchoTexto (cond (css (17.0f)).withExtraKerningFactor (0.04f), "Barullo Xestor"),
-                                                              anchoTexto (caps (css (8.5f), 0.22f), "ESCOITA " + upper (U ("· ") + tr ("Ferramentas")))));
-    logo = { m, fila, anchoLogo, 36 };
-    const int gap = W >= 1000 ? 28 : 12;
+    const int m = W >= 1000 ? 44 : 20;
+    const bool dobre = dobreFila();
+    // a barra: a icona e o nome; as pestanas; a lupa, comprobar e os axustes (redondos)
+    const int fila = 18;
+    logo = { m, fila, 34 + 30 + juce::roundToInt (anchoTexto (cond (css (16.0f)), "Barullo Xestor")), 36 };
     int x = W - m;
-    axustes.setBounds (x - 36, fila, 36, 36);
-    x -= 36 + (W >= 1000 ? 14 : 10);
-    refrescar.setBounds (x - 36, fila, 36, 36);
-    x -= 36 + gap;
-    int xp = dobreFila() ? m : logo.getRight() + 24 + 28;
-    const int yp = dobreFila() ? fila + 36 + 14 : fila;
+    for (auto* b : { &axustes, &refrescar, &lupa })
+    {
+        b->setBounds (x - 36, fila, 36, 36);
+        x -= 36 + (W >= 1000 ? 30 : 14);
+    }
+    if (buscando)
+    {
+        const int wb = juce::jlimit (140, 260, x + (W >= 1000 ? 30 : 14) - 12 - (dobre ? logo.getRight() + 16 : W / 2));
+        zonaBusca = { lupa.getX() - 10 - wb, fila, wb, 36 };
+        buscador.setBounds (zonaBusca);
+        x = zonaBusca.getX() - 20;
+    }
+    else zonaBusca = {};
+    int xp = dobre ? m : logo.getRight() + 30;
+    const int yp = dobre ? fila + 36 + 10 : fila;
     for (auto& b : pestanaBtn)
     {
-        const int w = Look::anchoTecla (*b, 28);
-        b->setBounds (xp, yp + 1, w, 34);
-        xp += w + 4;
+        if (! b->isVisible()) continue;
+        const int w = Look::anchoTecla (*b, 20);
+        b->setBounds (xp, yp + 2, w, 34);
+        xp += w + 6;
     }
-    const int fb = dobreFila() ? W - m : x;
-    const int wb = juce::jlimit (120, 220, fb - xp - 16);
-    zonaBusca = { fb - wb, yp, wb, 36 };
-    buscador.setBounds (zonaBusca);
-    corpo = { 0, yp + 36 + 22, W, 0 };
+    barra.setBounds (0, 0, W, dobre ? 112 : 76);
 
     // o pé
     pe = { 0, H - 36, W, 36 };
@@ -1713,7 +2200,7 @@ void Principal::resized()
         const int w = juce::jmin (Look::anchoTecla (novaVersion, 30), xf - 220);
         novaVersion.setBounds (xf - 12 - w, pe.getY() + 5, w, 26);
     }
-    corpo.setHeight (pe.getY() - corpo.getY());
+    corpo = { 0, 0, W, pe.getY() };
     vista.setBounds (corpo);
     lista.colocar (corpo.getWidth() - (lista.getHeight() > corpo.getHeight() ? vista.getScrollBarThickness() : 0));
     volverProbar.setBounds (W / 2 - 90, corpo.getCentreY() + 60, 180, 40);
@@ -1721,41 +2208,48 @@ void Principal::resized()
     modal.setBounds (getLocalBounds());
 }
 
-void Principal::paintCabeceira (juce::Graphics& g)
+void Principal::Barra::paint (juce::Graphics& g)
 {
-    // a icona e o nome
-    const auto l = logo.toFloat();
+    // un degradado escuro (máis opaco ao baixar), a icona e o nome
+    const bool baixou = p.vista.getViewPositionY() > 8 || ! p.lista.inicio();
+    const auto r = getLocalBounds().toFloat();
+    g.setGradientFill (juce::ColourGradient (fondoNoite.withAlpha (baixou ? 0.96f : 0.8f), 0.0f, 0.0f,
+                                             fondoNoite.withAlpha (baixou ? 0.85f : 0.0f), 0.0f, r.getBottom(), false));
+    g.fillRect (r);
+    if (baixou)
+    {
+        g.setColour (juce::Colours::white.withAlpha (0.04f));
+        g.fillRect (r.withTop (r.getBottom() - 1.0f));
+    }
+    const auto l = p.logo.toFloat();
     const auto ic = iconaApp();
     const auto ri = juce::Rectangle<float> (l.getX(), l.getCentreY() - 17.0f, 34.0f, 34.0f);
     if (ic.isValid())
     {
         g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
+        g.setOpacity (1.0f);
         g.drawImage (ic, ri, juce::RectanglePlacement::stretchToFit);
     }
     g.setColour (col::crema);
-    g.setFont (cond (css (17.0f)).withExtraKerningFactor (0.04f));
-    g.drawText ("Barullo Xestor", juce::Rectangle<float> (ri.getRight() + 12.0f, l.getY() - 2.0f, 260.0f, 24.0f), juce::Justification::centredLeft, false);
-    g.setColour (col::crema3);
-    drawCaps (g, "Escoita " + juce::String (U ("· ")) + tr ("Ferramentas"), juce::Rectangle<float> (ri.getRight() + 13.0f, l.getY() + 22.0f, 260.0f, 12.0f),
-              juce::Justification::centredLeft, css (8.5f), 0.22f);
-    // o buscador: o fondo e a lupa (o texto debúxao o editor)
-    if (buscador.isVisible())
+    g.setFont (cond (css (16.0f)));
+    g.drawText ("Barullo Xestor", juce::Rectangle<float> (ri.getRight() + 30.0f, l.getY(), 260.0f, l.getHeight()), juce::Justification::centredLeft, false);
+    // o buscador aberto: o fondo (o texto debúxao o editor)
+    if (p.buscando)
     {
-        const auto b = zonaBusca.toFloat().reduced (0.5f);
-        g.setColour (juce::Colours::black.withAlpha (0.25f));
-        g.fillRoundedRectangle (b, 10.0f);
-        paintLupa (g, juce::Rectangle<float> (b.getX() + 8.0f, b.getY(), 22.0f, b.getHeight()), col::crema3);
+        const auto b = p.zonaBusca.toFloat().reduced (0.5f);
+        g.setColour (juce::Colour (0xff0c1020).withAlpha (0.9f));
+        g.fillRoundedRectangle (b, b.getHeight() * 0.5f);
     }
 }
 
 void Principal::paintPe (juce::Graphics& g)
 {
     const auto r = pe.toFloat();
-    g.setColour (juce::Colour (0x99070b16));
+    g.setColour (fondoNoite.withAlpha (0.92f));
     g.fillRect (r);
-    g.setColour (juce::Colours::white.withAlpha (0.05f));
+    g.setColour (juce::Colours::white.withAlpha (0.04f));
     g.fillRect (r.withHeight (1.0f));
-    const int m = getWidth() >= 1000 ? 40 : 20;
+    const int m = getWidth() >= 1000 ? 44 : 20;
     // o LED: verde ao día, laranxa (respirando) comprobando ou traballando, ouro sen rede
     juce::Colour c = col::verde;
     bool aceso = true;
@@ -1781,12 +2275,10 @@ void Principal::paintBaleiro (juce::Graphics& g)
 {
     auto r = juce::Rectangle<float> (0.0f, 0.0f, juce::jmin (520.0f, (float) getWidth() - 60.0f), 170.0f).withCentre (corpo.getCentre().toFloat().translated (0.0f, -30.0f));
     juce::String t, d;
-    juce::Colour c = col::ouro;
     if (modelo.cargando)
     {
         t = tr ("Preguntando a GitHub…");
         d = tr ("Buscando os plugins de Escoita: os repositorios con packaging/produto.env e a súa última versión.");
-        c = col::laranxa;
     }
     else if (modelo.senRede())
     {
@@ -1810,13 +2302,11 @@ void Principal::paintBaleiro (juce::Graphics& g)
     g.setColour (col::crema2);
     g.setFont (body (css (13.5f)));
     g.drawFittedText (d, r.reduced (20.0f, 0.0f).withTrimmedTop (100.0f).withHeight (44.0f).toNearestInt(), juce::Justification::centredTop, 2, 1.0f);
-    juce::ignoreUnused (c);
 }
 
 void Principal::paint (juce::Graphics& g)
 {
-    paintFondo (g, getLocalBounds().toFloat());
-    paintCabeceira (g);
+    g.fillAll (fondoNoite);
     if (baleiro()) paintBaleiro (g);
     paintPe (g);
 }
@@ -1824,12 +2314,12 @@ void Principal::paint (juce::Graphics& g)
 // ==================================================================== teclado e paneis
 void Principal::globalFocusChanged (juce::Component* c)
 {
-    // ao chegar co Tab (ou coas frechas) a unha tarxeta que non se ve, a lista desprázase ata ela
+    // ao chegar co Tab (ou coas frechas) a unha capa que non se ve, a lista desprázase ata ela (sen quedar baixo a barra)
     if (c == nullptr || ! lista.isParentOf (c)) return;
     const auto r = lista.getLocalArea (c, c->getLocalBounds()).expanded (0, 8);
-    const auto v = vista.getViewArea();
-    if (r.getY() < v.getY()) vista.setViewPosition (0, juce::jmax (0, r.getY()));
-    else if (r.getBottom() > v.getBottom()) vista.setViewPosition (0, r.getBottom() - v.getHeight());
+    const auto v = vista.getViewArea().withTrimmedTop (barra.getHeight());
+    if (r.getY() < v.getY()) vista.setViewPosition (0, juce::jmax (0, r.getY() - barra.getHeight()));
+    else if (r.getBottom() > v.getBottom()) vista.setViewPosition (0, r.getBottom() - vista.getViewHeight());
 }
 
 void Principal::escena (const juce::String& e)
@@ -1837,10 +2327,16 @@ void Principal::escena (const juce::String& e)
     const Produto* p = nullptr;
     for (auto& x : modelo.produtos())
         if (x.ultima && (p == nullptr || modelo.situacion (x).estado() == Estado::actualizacion)) p = &x;
-    if (e == "demo")
+    if (e == "efectos" || e == "actualizacions")
+        pestanaBtn[e == "efectos" ? 2 : 4]->onClick();
+    else if (e == "busca")
     {
-        // coma na maqueta: o rato enriba de Xuno
-        if (auto* t = lista.tarxeta ("Barullo Xuno")) t->porSobre (true);
+        abrirBusca (true);
+        buscador.setText ("verb", true);
+    }
+    else if (e == "sobre")
+    {
+        if (auto* t = lista.tarxeta ("Barullo Xuntos")) t->porSobre (true);
     }
     else if ((e == "ficha" || e == "captura" || e == "aberta") && p != nullptr)
     {

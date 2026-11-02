@@ -30,7 +30,7 @@ Opcións:
   --json                        a lista en JSON
   --captura <ficheiro.png>      debuxa a xanela nun PNG (sen abrila), cos datos de verdade
       --ancho <px> --alto <px> --escala <x> --completa   (o tamaño; --completa: toda a lista)
-      --escena sen-rede|baleiro|traballando|ao-dia|demo|ficha|aberta|captura|sen-capturas|notas|daw|agardando|lembranza|xestor|atallos
+      --escena sen-rede|baleiro|traballando|ao-dia|demo|ficha|aberta|captura|sen-capturas|efectos|actualizacions|busca|sobre|notas|daw|agardando|lembranza|xestor|atallos
       --idioma gl|es|en                                      (a interface neste idioma)
   --icona <ficheiro.png>        debuxa a icona da app (1024 px)
   --informe                     o informe para pedir axuda (versións, rutas, copias duplicadas, firma)

@@ -95,7 +95,7 @@ B="$HOME/Applications/Barullo Xestor.app/Contents/MacOS/Barullo Xestor"   # Wind
 "$B" --instalar tune --dir /tmp/proba --papeleira /tmp/lixo
 "$B" --actualizar fm                # e a copia vella do sistema, ao Lixo (pide o permiso)
 "$B" --actualizar-todo
-"$B" --captura /tmp/x.png [--escena sen-rede|baleiro|traballando|ao-dia|demo|ficha|aberta|captura|sen-capturas|notas|daw|xestor|atallos] [--idioma gl|es|en] [--completa]
+"$B" --captura /tmp/x.png [--escena sen-rede|baleiro|traballando|ao-dia|demo|ficha|aberta|captura|sen-capturas|efectos|actualizacions|busca|sobre|notas|daw|xestor|atallos] [--idioma gl|es|en] [--completa]
 "$B" --informe                      # o informe para pedir axuda
 "$B" --axuda
 ```

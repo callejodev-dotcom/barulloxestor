@@ -9,46 +9,81 @@
 // cor) en reixa, o pé (a hora, os formatos e a versión) e a ficha de cada plugin por riba.
 namespace vistas
 {
-// ------------------------------------------------------------------ unha tarxeta por produto
+// ------------------------------------------------------------------ unha capa por produto
+// Coma a portada dun disco: un degradado coa cor do plugin, a súa interface inclinada en
+// perspectiva (que sae pola dereita), o nome arriba e o LED do estado; debaixo, o nome e a versión.
 class Tarxeta : public juce::Component
 {
 public:
     Tarxeta (Modelo&, std::function<void (const xestor::Produto&)> abrirFicha);
     void mostrar (const xestor::Produto&);
     const xestor::Produto& getProduto() const { return produto; }
-    static int alto (int ancho);       // o alto da tarxeta (sen a marxe) para este ancho
-    static constexpr int marxe = 14;   // arredor, para a sombra e o brillo
+    static int alto (int ancho);       // o alto (sen a marxe) para este ancho
+    static constexpr int marxe = 16;   // arredor, para a sombra e o brillo
 
-    // as animacións: devolve true se algo cambiou
     bool animar (float dt);
-    void entrar (float atraso);        // a aparición (escalonada)
+    void entrar (float atraso);
     void porSobre (bool s) { forzarSobre = s; sobre = s ? 1.0f : 0.0f; resized(); repaint(); }
 
-    std::function<void (Tarxeta*, int dx, int dy)> mover;   // as frechas: ir á tarxeta do lado
+    std::function<void (Tarxeta*, int dx, int dy)> mover;
 
     void paint (juce::Graphics&) override;
     void resized() override;
     bool hitTest (int x, int y) override;
-    void mouseEnter (const juce::MouseEvent&) override;
-    void mouseExit (const juce::MouseEvent&) override;
-    void mouseMove (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
     bool keyPressed (const juce::KeyPress&) override;
-    void focusGained (FocusChangeType) override { repaint(); }
-    void focusLost (FocusChangeType) override { repaint(); }
+    void focusGained (FocusChangeType) override { resized(); repaint(); }
+    void focusLost (FocusChangeType) override { resized(); repaint(); }
 
 private:
-    juce::Rectangle<float> caixa() const;      // a tarxeta (subida co rato e na aparición)
-    juce::Rectangle<float> zonaVersion() const;
+    juce::Rectangle<float> capa() const;   // o cadrado (subido co rato e na aparición)
     float alzado() const;
-    void paintSenCaptura (juce::Graphics&, juce::Rectangle<float>);
-
     Modelo& modelo;
     xestor::Produto produto;
     std::function<void (const xestor::Produto&)> abrirFicha;
     juce::TextButton accion, mais;
     float sobre = 0.0f, aparicion = 1.0f, atraso = 0.0f, visto = 0.0f;
-    bool rato = false, forzarSobre = false, traballaba = false;
+    bool forzarSobre = false, traballaba = false;
+    // a interface deformada, gardada (cambia só co tamaño ou coa escala)
+    juce::Image deformada;
+    juce::Rectangle<float> caixaDeformada;
+    int anchoCache = 0;
+    float escalaCache = 0.0f;
+    bool tinhaImaxe = false;
+};
+
+// ------------------------------------------------------------------ o heroe: un plugin destacado
+class Heroe : public juce::Component
+{
+public:
+    Heroe (Modelo&, std::function<void (const xestor::Produto&)> abrirFicha);
+    void actualizar();   // escolle os destacados (os que se actualizan, se non os últimos publicados)
+    bool animar (float dt);
+    void ir (int i);
+    bool hai() const { return ! slides.isEmpty(); }
+    static int alto (int ancho);
+
+    void paint (juce::Graphics&) override;
+    void resized() override;
+    void mouseUp (const juce::MouseEvent&) override;
+    bool keyPressed (const juce::KeyPress&) override;
+
+private:
+    struct Arte { juce::Image im; int w = 0, h = 0; float escala = 0.0f; };
+    const xestor::Produto* produto (int i) const;
+    juce::Image arte (int i, float escala);   // o fondo, o halo e a interface en perspectiva (gardado)
+    void textos();
+    juce::Rectangle<float> zonaPuntos (int i) const;
+    bool estreito() const { return getWidth() < 1000; }
+
+    Modelo& modelo;
+    std::function<void (const xestor::Produto&)> abrirFicha;
+    juce::StringArray slides;   // os id dos produtos
+    std::map<juce::String, Arte> artes;
+    int actual = 0, anterior = -1;
+    float mestura = 1.0f, tempo = 0.0f;
+    juce::TextButton principal, novidades, ficha;
+    juce::StringArray pedidas;   // as capturas enteiras xa pedidas
 };
 
 // ------------------------------------------------------------------ a banda das actualizacións
@@ -95,8 +130,10 @@ public:
     void entrada();   // a aparición escalonada das tarxetas
     Tarxeta* tarxeta (const juce::String& nome);   // (as escenas)
 
-    xestor::Pestana pestana = xestor::Pestana::todo;
+    int seccion = 0;   // 0 inicio, 1 instrumentos, 2 efectos, 3 paquetes, 4 actualizacións
     juce::String busca;
+    bool inicio() const { return seccion == 0 && busca.trim().isEmpty(); }
+    bool animarHeroe (float dt) { return heroe.isVisible() && heroe.animar (dt); }
     std::function<void()> alCambiar;   // (os recontos das pestanas)
 
 private:
@@ -104,10 +141,11 @@ private:
     int visibles() const;
     Modelo& modelo;
     std::function<void (const xestor::Produto&)> abrirFicha;
+    Heroe heroe;
     Destacado destacado;
     std::vector<std::unique_ptr<Tarxeta>> tarxetas;
     std::vector<std::unique_ptr<FilaOrfo>> orfos;
-    struct Titulo { juce::String texto; juce::Rectangle<int> r; int n; };
+    struct Titulo { juce::String texto; juce::Rectangle<int> r; int n; bool grande = false; juce::String resumo; };
     std::vector<Titulo> titulos;
     juce::Rectangle<int> faixa, baleiro;   // o aviso de arriba (sen rede, erro); «nada casa»
     juce::TextButton pecharFaixa;
@@ -141,6 +179,11 @@ private:
     xestor::Produto produto;
     int indice = 0;
     std::map<int, juce::Image> imaxes;
+    juce::Image deformada;   // a captura en perspectiva (gardada para este índice e tamaño)
+    juce::Rectangle<float> caixaDeformada, zonaDeformada;
+    int indiceDeformada = -1;
+    float escalaDeformada = 0.0f;
+    bool deformadaBoa = false;
     juce::TextButton pecharBtn, anterior, seguinte, accion, manual, presets, mais;
     juce::TextEditor notas;
     std::vector<std::unique_ptr<juce::TextButton>> volver;
@@ -167,7 +210,7 @@ public:
     void escena (const juce::String&);   // os paneis, para as capturas
     void visibilityChanged() override;
 
-    static constexpr int anchoInicial = 1200, altoInicial = 820;
+    static constexpr int anchoInicial = 1280, altoInicial = 840;
 
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
@@ -175,11 +218,10 @@ private:
     void globalFocusChanged (juce::Component*) override;   // co teclado: que se vexa a tecla co foco
     void actualizar();
     void recontos();
-    void paintCabeceira (juce::Graphics&);
     void paintPe (juce::Graphics&);
     void paintBaleiro (juce::Graphics&);
     bool baleiro() const;
-    bool dobreFila() const { return getWidth() < 1100; }
+    bool dobreFila() const { return getWidth() < 980; }
 
     Modelo& modelo;
     aspecto::Look look;
@@ -187,7 +229,16 @@ private:
     std::vector<std::unique_ptr<juce::TextButton>> formatoBtn, pestanaBtn;
     std::vector<xestor::Formato> formatos;
     juce::TextEditor buscador;
-    juce::TextButton refrescar, axustes, volverProbar, novaVersion;
+    juce::TextButton lupa, refrescar, axustes, volverProbar, novaVersion;
+    struct Barra : juce::Component
+    {
+        Principal& p;
+        explicit Barra (Principal& pp) : p (pp) { setInterceptsMouseClicks (false, false); }
+        void paint (juce::Graphics&) override;
+    } barra { *this };
+    bool buscando = false;
+    int ultimoY = -1;
+    void abrirBusca (bool);
     juce::Viewport vista;
     Lista lista;
     Ficha ficha;
