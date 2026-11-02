@@ -77,7 +77,7 @@ Se se di que non, a copia queda onde estaba e avísase.
   notas e «Actualizar e reiniciar»: descarga (comprobando tamaño e SHA-256), en Mac e Linux pon a
   nova no sitio da de agora (a vella, ao Lixo) e en Windows abre o instalador en silencio; despois
   ábrese a nova.
-- **Comprobar cada día**: no menú ••• da cabeceira, unha icona na barra de menús (Mac) ou na
+- **Comprobar cada día**: no menú ⚙ da cabeceira, unha icona na barra de menús (Mac) ou na
   bandeja (Windows, Linux) que pregunta a GitHub unha vez ao día e avisa cunha notificación
   das versións novas (unha vez cada unha). Con ela, pechar a xanela deixa a app alí.
 - **Idioma**: galego, castelán ou inglés (por defecto, o do sistema: gl → galego, es →
@@ -95,7 +95,7 @@ B="$HOME/Applications/Barullo Xestor.app/Contents/MacOS/Barullo Xestor"   # Wind
 "$B" --instalar tune --dir /tmp/proba --papeleira /tmp/lixo
 "$B" --actualizar fm                # e a copia vella do sistema, ao Lixo (pide o permiso)
 "$B" --actualizar-todo
-"$B" --captura /tmp/x.png [--escena sen-rede|baleiro|traballando|ao-dia|aberta|captura|notas|daw|xestor|atallos] [--idioma gl|es|en] [--completa]
+"$B" --captura /tmp/x.png [--escena sen-rede|baleiro|traballando|ao-dia|demo|ficha|aberta|captura|sen-capturas|notas|daw|xestor|atallos] [--idioma gl|es|en] [--completa]
 "$B" --informe                      # o informe para pedir axuda
 "$B" --axuda
 ```

@@ -19,7 +19,7 @@ Modal::Modal()
     corpo.setColour (juce::TextEditor::textColourId, col::crema2);
     corpo.setColour (juce::TextEditor::highlightColourId, col::laranxa.withAlpha (0.35f));
     corpo.setColour (juce::TextEditor::highlightedTextColourId, col::crema);
-    corpo.setFont (body (14.0f));
+    corpo.setFont (body (css (13.5f)));
     corpo.setIndents (14, 10);
     corpo.setTitle (tr ("Texto"));
     addAndMakeVisible (corpo);
@@ -46,7 +46,7 @@ void Modal::abrir (const juce::String& t, const juce::String& s, const juce::Str
     {
         auto b = std::make_unique<juce::TextButton> (teclas[i].texto);
         if (teclas[i].primaria) b->getProperties().set ("primaria", true);
-        else b->getProperties().set ("noLed", true);
+        else b->getProperties().set ("estilo", "fantasma");
         b->getProperties().set ("led", (juce::int64) luz.getARGB());
         b->onClick = [this, i]
         {
@@ -103,13 +103,13 @@ void Modal::colocar()
     const int alto = 74 + juce::jmin (hCorpo, juce::jmax (60, maxCorpo)) + 70;
     caixa = juce::Rectangle<int> (ancho, alto).withCentre (getLocalBounds().getCentre());
     corpo.setBounds (caixa.getX() + 22, caixa.getY() + 70, caixa.getWidth() - 44, caixa.getHeight() - 70 - 66);
-    pecharBtn.setBounds (caixa.getRight() - 50, caixa.getY() + 14, 36, 32);
+    pecharBtn.setBounds (caixa.getRight() - 52, caixa.getY() + 14, 36, 36);
     int x = caixa.getRight() - 22;
     for (int i = (int) botons.size() - 1; i >= 0; --i)
     {
         auto& b = *botons[(size_t) i];
-        const int w = juce::jlimit (110, 260, (int) anchoTexto (caps (9.5f, 0.15f), upper (b.getButtonText())) + (teclas[(size_t) i].primaria ? 52 : 36));
-        b.setBounds (x - w, caixa.getBottom() - 52, w, 34);
+        const int w = juce::jlimit (100, 300, Look::anchoTecla (b, 40));
+        b.setBounds (x - w, caixa.getBottom() - 54, w, 38);
         x -= w + 10;
     }
 }
@@ -118,23 +118,29 @@ void Modal::resized() { colocar(); }
 
 void Modal::paint (juce::Graphics& g)
 {
-    g.fillAll (col::noite.withAlpha (0.82f));
+    g.fillAll (juce::Colour (0xb8050810));
     const auto r = caixa.toFloat();
-    g.setColour (juce::Colours::black.withAlpha (0.5f));
-    g.fillRoundedRectangle (r.translated (0.0f, 6.0f).expanded (2.0f), 16.0f);
-    paintPanel (g, r, 14.0f);
+    paintSombra (g, r, 18.0f, juce::Colours::black.withAlpha (0.6f), 34.0f, 24.0f);
+    g.setGradientFill (juce::ColourGradient (col::panel1, 0.0f, r.getY(), col::panel2, 0.0f, r.getBottom(), false));
+    g.fillRoundedRectangle (r, 18.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.08f));
+    g.drawRoundedRectangle (r.reduced (0.5f), 18.0f, 1.0f);
     // a cabeceira: o LED, o título e debaixo o subtítulo
     auto cab = juce::Rectangle<float> (r.getX() + 24.0f, r.getY() + 18.0f, r.getWidth() - 90.0f, 22.0f);
     paintLed (g, { cab.getX() + 4.0f, cab.getCentreY() }, true, luz);
     g.setColour (col::crema);
-    g.setFont (cond (16.0f).withExtraKerningFactor (0.04f));
+    g.setFont (cond (css (17.0f)));
     g.drawFittedText (titulo, cab.withTrimmedLeft (18.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.8f);
     if (subtitulo.isNotEmpty())
     {
         g.setColour (col::crema3);
         drawCaps (g, subtitulo, cab.translated (18.0f, 24.0f).withHeight (12.0f), juce::Justification::centredLeft, 8.0f, 0.2f);
     }
-    paintWell (g, corpo.getBounds().toFloat().expanded (2.0f), 10.0f);
+    const auto cb = corpo.getBounds().toFloat().expanded (2.0f);
+    g.setColour (juce::Colours::black.withAlpha (0.25f));
+    g.fillRoundedRectangle (cb, 12.0f);
+    g.setColour (juce::Colours::white.withAlpha (0.05f));
+    g.drawRoundedRectangle (cb.reduced (0.5f), 12.0f, 1.0f);
 }
 
 bool Modal::keyPressed (const juce::KeyPress& k)
@@ -253,10 +259,12 @@ void atallos (juce::Component* desde)
     const auto cmd = soActual() == SO::mac ? juce::String ("Cmd") : juce::String ("Ctrl");
     m->abrir (tr ("Atallos do teclado"), "Barullo Xestor",
               tr ("Tab / Maiús + Tab: ir dunha tecla á seguinte (a lista desprázase soa)\n"
-                  "Intro: premer a tecla que ten o foco (o aro de cor)\n"
-                  "Esc: pechar o panel, o menú ou o visor (e deixar de agardar polo DAW)\n"
+                  "Frechas: dunha tarxeta á do lado\n"
+                  "Intro: abrir a ficha da tarxeta ou premer a tecla que ten o foco (o aro de cor)\n"
+                  "Esc: pechar a ficha, o panel ou o menú, baleirar a busca (e deixar de agardar polo DAW)\n"
+                  "%1 + F: buscar\n"
                   "%1 + R ou F5: comprobar agora en GitHub\n"
-                  "← →: pasar as capturas no visor\n"
+                  "← →: pasar as capturas na ficha\n"
                   "Nos menús: as frechas e Intro", cmd),
               col::azul, { { tr ("Pechar"), {}, true } });
 }
