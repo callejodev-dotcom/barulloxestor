@@ -21,6 +21,7 @@ public:
     std::vector<const xestor::Produto*> porActualizar() const;
     juce::StringArray avisos() const { return catalogo ? catalogo->avisos : juce::StringArray(); }
     bool senRede() const;
+    bool tempoEsgotado() const { return catalogo && catalogo->tempoEsgotado; }
     juce::Time dataCatalogo() const { return catalogo ? catalogo->data : juce::Time(); }
 
     bool cargando = false;
@@ -114,6 +115,8 @@ private:
     juce::ThreadPool fios { juce::ThreadPoolOptions{}.withNumberOfThreads (1) };    // un traballo de cada vez
     juce::ThreadPool carga { juce::ThreadPoolOptions{}.withNumberOfThreads (1) };
     juce::CriticalSection bloqueo;
+    std::shared_ptr<xestor::Cancelacion> cancelacionCarga;   // a da comprobación en marcha
+    std::atomic<bool> saindo { false };                     // pechando: as descargas paran
 
     JUCE_DECLARE_WEAK_REFERENCEABLE (Modelo)
 };

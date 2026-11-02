@@ -27,8 +27,12 @@ Instalador Modelo::instalador (const Rutas& r)
 
 Modelo::~Modelo()
 {
-    carga.removeAllJobs (true, 20000);
-    fios.removeAllJobs (true, 60000);
+    // ao pechar non se agarda pola rede: cancélase o pendente (as descargas paran no seguinte aviso de progreso)
+    saindo = true;
+    if (cancelacionCarga != nullptr) cancelacionCarga->cancelar();
+    if (github != nullptr) github->cancelar();
+    carga.removeAllJobs (true, 8000);
+    fios.removeAllJobs (true, 8000);
     masterReference.clear();
 }
 
@@ -135,10 +139,13 @@ void Modelo::cargar (bool forzar)
     juce::WeakReference<Modelo> w (this);
     const auto ax = axustes;
     auto* t = &transporte;
-    carga.addJob ([w, ax, forzar, t]
+    auto canc = std::make_shared<Cancelacion>();
+    cancelacionCarga = canc;
+    carga.addJob ([w, ax, forzar, t, canc]
     {
         const auto token = ax.usarGh ? GitHub::tokenDisponible() : juce::String();
         auto gh = std::make_shared<GitHub> (ax.propietario, GitHub::cacheEstandar(), *t, token);
+        gh->cancelacion = canc;
         auto c = std::make_shared<Catalogo> (Descubridor (gh.get(), ax).descubrir (forzar));
         // as miniaturas, xa neste fío (a primeira captura de cada un)
         auto minis = std::make_shared<std::map<juce::String, juce::Image>>();
@@ -243,7 +250,7 @@ void Modelo::instalar (const Produto& p, bool forzar)
                         wr->avisar();
                     });
                 }
-                return true;
+                return ! saindo.load();   // ao pechar a app, a descarga para
             });
         }
         catch (const ErroInstalacion& e) { erroTxt = e.texto(); }
@@ -388,7 +395,7 @@ void Modelo::escena (const juce::String& e)
         reescanear();
         mensaxe = c.avisos[0];
     }
-    else if (e == "baleiro")
+    else if (e == "baleiro" || e == "cargando")
     {
         catalogo.reset();
         cargando = true;
@@ -636,7 +643,7 @@ void Modelo::actualizarXestor()
                 ultimo = n;
                 juce::MessageManager::callAsync ([wr = wLocal, v] { if (wr != nullptr) { wr->progresoXestor = v; wr->avisar(); } });
             }
-            return true;
+            return ! saindo.load();
         });
         juce::StringArray orde;
         if (r.wasOk())
