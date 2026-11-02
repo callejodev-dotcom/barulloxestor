@@ -14,11 +14,11 @@ juce::String informe (const DatosInforme& d)
     juce::StringArray l;
     l.add ("Barullo Xestor " + d.versionXestor + U (" · ") + d.so + (d.idioma.isNotEmpty() ? U (" · idioma ") + d.idioma : juce::String()));
     l.add (U ("Data: ") + juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H:%M"));
-    juce::String gh = d.senRede ? U ("sen conexión (o gardado)") : juce::String ("con conexión");
+    juce::String gh = d.senRede ? U ("sen conexión (o gardado)") : U ("con conexión");
     if (d.dataCatalogo != juce::Time()) gh << U (", catálogo das ") << d.dataCatalogo.formatted ("%H:%M");
     if (d.restantesAPI >= 0) gh << ", quedan " << d.restantesAPI << " preguntas";
     l.add ("GitHub: " + gh);
-    l.add (U ("DAW abertos: ") + (d.daws.isEmpty() ? juce::String ("ningún") : d.daws.joinIntoString (", ")));
+    l.add (U ("DAW abertos: ") + (d.daws.isEmpty() ? U ("ningún") : d.daws.joinIntoString (", ")));
 
     l.add ({});
     l.add ("CARTAFOLES");
@@ -38,8 +38,8 @@ juce::String informe (const DatosInforme& d)
         const auto& p = s.produto;
         juce::String cab = "  " + p.nome + U (" — ") + etiqueta (s.estado());
         if (p.ultima && p.ultima->version()) cab << U (" · publicada ") << p.ultima->version()->texto();
-        if (p.versionLocal) cab << " · local " << p.versionLocal->texto();
-        if (p.repo.isNotEmpty()) cab << " · " << p.repo;
+        if (p.versionLocal) cab << U (" · local ") << p.versionLocal->texto();
+        if (p.repo.isNotEmpty()) cab << U (" · ") << p.repo;
         l.add (cab);
         const auto dup = s.duplicados();
         for (auto& i : s.instalados)

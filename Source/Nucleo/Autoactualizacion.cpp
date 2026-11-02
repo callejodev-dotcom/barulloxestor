@@ -137,7 +137,7 @@ juce::String guionWindows (int pid, const juce::File& instalador, const juce::Fi
     const auto p = juce::String (pid);
     juce::StringArray l {
         "@echo off",
-        "rem Barullo Xestor: agarda a que se peche, instala a nova en silencio e ábrea",
+        "rem Barullo Xestor: agarda a que se peche, instala a nova en silencio e abre",
         "set n=0",
         ":agarda",
         "set /a n+=1",

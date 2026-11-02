@@ -863,7 +863,7 @@ int main (int argc, char** argv)
         proba ("informe: versións, rutas, duplicadas, firma, copias e DAW",
                inf.contains ("Barullo Xestor 0.3.0") && inf.contains (U ("Barullo FM — copia vella no sistema · publicada 0.5.1"))
                && inf.contains ("[DUPLICADA]") && inf.contains ("[firma: ad hoc]") && inf.contains (U ("copias para volver atrás: 0.5.0"))
-               && inf.contains ("DAW abertos: REAPER") && inf.contains ("Copias duplicadas (usuario e sistema): 2")
+               && inf.contains ("DAW abertos: REAPER") && inf.contains (U ("con conexión")) && ! inf.contains (U ("Ã")) && inf.contains ("Copias duplicadas (usuario e sistema): 2")
                && diagnostico::curta (juce::File::getSpecialLocation (juce::File::userHomeDirectory).getChildFile ("x/y")) == "~" + juce::File::getSeparatorString() + "x" + juce::File::getSeparatorString() + "y");
     }
 

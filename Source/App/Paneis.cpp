@@ -203,7 +203,7 @@ void notas (Modelo& modelo, juce::Component* desde, const Produto& p)
     const auto v = p.ultima ? texto (p.ultima->version()) : (p.versionLocal ? p.versionLocal->texto() : juce::String());
     juce::String sub = tr ("Notas da versión %1", v);
     if (p.ultima && p.ultima->publicado != juce::Time())
-        sub << "  ·  " << juce::String (p.ultima->publicado.getDayOfMonth()) << " " << textos::mesCurto (p.ultima->publicado.getMonth() + 1)
+        sub << U ("  ·  ") << juce::String (p.ultima->publicado.getDayOfMonth()) << " " << textos::mesCurto (p.ultima->publicado.getMonth() + 1)
             << " " << juce::String (p.ultima->publicado.getYear());
     std::vector<Modal::Tecla> teclas;
     if (p.ultima && p.ultima->paxina.isNotEmpty())
