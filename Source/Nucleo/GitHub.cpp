@@ -179,6 +179,7 @@ std::optional<Lanzamento> GitHub::lanzamento (const juce::var& o)
     l.nome = o["name"].isString() ? o["name"].toString() : l.tag;
     l.paxina = o["html_url"].toString();
     if (o["published_at"].isString()) l.publicado = juce::Time::fromISO8601 (o["published_at"].toString());
+    if (o["body"].isString()) l.notas = o["body"].toString().replace ("\r\n", "\n").trim();
     if (auto* a = o["assets"].getArray())
         for (auto& x : *a)
         {
@@ -265,6 +266,31 @@ juce::StringArray GitHub::capturas (const RepoInfo& repo, const juce::StringArra
     }
     catch (const ErroGitHub&) {}   // sen capturas: a tarxeta leva a inicial
     return r;
+}
+
+juce::String GitHub::manual (const RepoInfo& repo, bool forzar)
+{
+    const auto raw = "https://raw.githubusercontent.com/" + repo.nomeCompleto + "/" + repo.rama + "/";
+    try
+    {
+        for (auto md : { "docs/MANUAL.md", "LEEME.md", "README.md" })
+            if (pedir (raw + md, forzar).estado == 200)
+                return "https://github.com/" + repo.nomeCompleto + "/blob/" + repo.rama + "/" + md;
+    }
+    catch (const ErroGitHub&) {}
+    return {};
+}
+
+juce::String GitHub::notas (const juce::String& nomeCompleto, const Lanzamento& l)
+{
+    if (l.notas.isNotEmpty()) return l.notas;
+    try
+    {
+        auto r = pedir ("https://raw.githubusercontent.com/" + nomeCompleto + "/" + l.tag + "/NOTAS-VERSION.md", false);
+        if (r.estado == 200) return r.texto().replace ("\r\n", "\n").trim();
+    }
+    catch (const ErroGitHub&) {}
+    return {};
 }
 
 juce::MemoryBlock GitHub::imaxe (const juce::String& url)

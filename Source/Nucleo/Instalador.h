@@ -3,6 +3,7 @@
 #include "Rede.h"
 #include "Papeleira.h"
 #include "Admin.h"
+#include "Copias.h"
 #include <stdexcept>
 
 namespace xestor
@@ -62,6 +63,8 @@ public:
     bool simularAdmin = false;
     // ao instalar unha versión nova, levar ao Lixo as copias máis vellas dos cartafoles do sistema
     bool quitarVellasDoSistema = true;
+    // onde gardar a versión de antes ao actualizar (para «Volver á 0.5.0»); nullptr: non se garda
+    Copias* copias = nullptr;
 
     // Descarga o arquivo deste sistema da última versión, compróbao e instala os formatos pedidos.
     Informe instalar (const Produto&, const std::vector<Formato>&, bool forzar = false,
@@ -69,6 +72,11 @@ public:
     // Instala desde un arquivo xa descargado (.zip ou .tar.gz).
     Informe instalarArquivo (const juce::File&, const Produto&, const std::vector<Formato>&,
                              std::optional<Version> esperada, bool forzar = false);
+    // Instala os bundles dun cartafol (xa aberto); MOVE de alí o que instala.
+    Informe instalarCartafol (const juce::File&, const Produto&, const std::vector<Formato>&,
+                              std::optional<Version> esperada, bool forzar = false);
+    // Volve a unha versión gardada nas copias (sen rede); a de agora vai ao Lixo (e gárdase tamén).
+    Informe restaurar (const Produto&, const Version&, const std::vector<Formato>&);
     // Leva ao Lixo as copias dos formatos pedidos (as do sistema só con incluirSistema).
     Informe desinstalar (const Produto&, const std::vector<Formato>&, bool incluirSistema);
     // Leva ao Lixo unhas copias concretas (p. ex. a vella de /Library cando a do usuario xa está ao día).

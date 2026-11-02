@@ -46,6 +46,12 @@ public:
     // As capturas da interface: as de CAPTURAS, a estándar docs/img/captura.png e as imaxes do
     // LEEME.md, README.md e docs/MANUAL.md (na orde en que aparecen). URL de raw.githubusercontent.com.
     juce::StringArray capturas (const RepoInfo&, const juce::StringArray& declaradas, bool forzar = false);
+    // O manual do repo: a páxina en GitHub do primeiro que exista de docs/MANUAL.md, LEEME.md e
+    // README.md (raw, sen gastar preguntas; xa se pediron para as capturas). Baleiro se non hai.
+    juce::String manual (const RepoInfo&, bool forzar = false);
+    // As notas dunha versión: o texto da versión en GitHub ou, se está baleiro, o NOTAS-VERSION.md
+    // do repo nesa etiqueta (raw). Baleiro se non hai nada.
+    juce::String notas (const juce::String& nomeCompleto, const Lanzamento&);
     // Os bytes dunha imaxe (da caché se a hai); baleiro se non se pode
     juce::MemoryBlock imaxe (const juce::String& url);
 

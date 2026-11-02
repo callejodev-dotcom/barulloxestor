@@ -62,6 +62,12 @@ set(NUCLEO_SOURCES
   Source/Nucleo/Papeleira.cpp
   Source/Nucleo/Admin.cpp
   Source/Nucleo/Instalador.cpp
+  Source/Nucleo/Copias.cpp
+  Source/Nucleo/Sistema.cpp
+  Source/Nucleo/Autoactualizacion.cpp
+  Source/Nucleo/Diagnostico.cpp
+  Source/Nucleo/Texto.cpp
+  Source/Nucleo/Traducions.cpp
   Source/App/CLI.cpp)
 if(APPLE)
   list(APPEND NUCLEO_SOURCES Source/Nucleo/Papeleira_mac.mm)

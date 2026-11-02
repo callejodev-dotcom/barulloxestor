@@ -16,6 +16,11 @@ struct Axustes
     juce::StringArray cartafolesLocais { "~/Downloads" };   // onde buscar repos con packaging/produto.env
     std::vector<Formato> formatos { Formato::vst3 };    // os que se instalan e se miran
     bool usarGh = true;                                 // usar `gh auth token` se o gh ten sesión
+    juce::String idioma;                                // «gl», «es», «en»; baleiro: o do sistema
+    bool bandeja = false;                               // a icona na barra de menús / bandeja (comprobar cada día)
+    bool copiaPresets = false;                          // copia dos presets antes de actualizar
+    juce::int64 ultimaComprobacion = 0;                 // ms (a última vez que se preguntou a GitHub)
+    juce::StringArray avisadas;                         // «Barullo FM 0.5.1»: as versións novas xa notificadas
 
     static juce::File ficheiroEstandar() { return cartafolDatos().getChildFile ("axustes.json"); }
     static Axustes cargar (const juce::File& = ficheiroEstandar());

@@ -30,8 +30,10 @@ Opcións:
   --json                        a lista en JSON
   --captura <ficheiro.png>      debuxa a xanela nun PNG (sen abrila), cos datos de verdade
       --ancho <px> --alto <px> --escala <x> --completa   (o tamaño; --completa: toda a lista)
-      --escena sen-rede|baleiro|traballando|ao-dia|captura   (un estado concreto, para o deseño)
+      --escena sen-rede|baleiro|traballando|ao-dia|aberta|captura|notas|daw|agardando|lembranza|xestor|atallos
+      --idioma gl|es|en                                      (a interface neste idioma)
   --icona <ficheiro.png>        debuxa a icona da app (1024 px)
+  --informe                     o informe para pedir axuda (versións, rutas, copias duplicadas, firma)
   --axuda
 
 O <nome> pode ser «tune», «Barullo Tune», «barullotune», «enxebres»...)");
@@ -57,7 +59,7 @@ juce::Result ler (const juce::StringArray& args, Opcions& o)
         };
         auto ruta = [] (const juce::String& s) { return juce::File::getCurrentWorkingDirectory().getChildFile (s); };
         juce::String v;
-        if (a == "--listar" || a == "--actualizar-todo" || a == "--axuda" || a == "-h" || a == "--help") o.orde = a;
+        if (a == "--listar" || a == "--actualizar-todo" || a == "--informe" || a == "--axuda" || a == "-h" || a == "--help") o.orde = a;
         else if (a == "--instalar" || a == "--actualizar" || a == "--desinstalar")
         {
             o.orde = a;
@@ -80,12 +82,17 @@ juce::Result ler (const juce::StringArray& args, Opcions& o)
             o.formatos = listaFormatos (v);
             if (! o.formatos) return juce::Result::fail (U ("formatos descoñecidos: ") + v);
         }
-        else if (a == "--ancho" || a == "--alto" || a == "--escala" || a == "--escena")
+        else if (a == "--ancho" || a == "--alto" || a == "--escala" || a == "--escena" || a == "--idioma")
         {
             if (! seguinte (v)) return juce::Result::fail (a + " precisa un valor");
             if (a == "--ancho") o.ancho = juce::jlimit (480, 4000, v.getIntValue());
             else if (a == "--alto") o.alto = juce::jlimit (320, 8000, v.getIntValue());
             else if (a == "--escala") o.escala = juce::jlimit (0.5f, 4.0f, v.getFloatValue());
+            else if (a == "--idioma")
+            {
+                if (! idiomaDeClave (v)) return juce::Result::fail (U ("idioma descoñecido: ") + v + " (gl, es, en)");
+                o.idioma = v;
+            }
             else o.escena = v;
         }
         else if (a == "--forzar") o.forzar = true;
@@ -192,6 +199,9 @@ int executar (const juce::StringArray& args, Contexto& ctx)
     if (o.senAdmin) elev = &elevNon;
     Instalador inst (rutas, *papeleira, elev, t, ctx.temporal, &rexistro);
     inst.simularAdmin = o.simularAdmin;
+    // a versión de antes, gardada para volver a ela (só cos cartafoles de verdade)
+    Copias copias (Copias::estandar());
+    if (o.dir == juce::File()) inst.copias = &copias;
 
     auto informar = [&] (const Informe& inf)
     {
@@ -221,6 +231,25 @@ int executar (const juce::StringArray& args, Contexto& ctx)
         }
         catch (const ErroInstalacion& e) { err (p.nome + ": " + e.texto()); return 1; }
     };
+
+    if (o.orde == "--informe")
+    {
+        DatosInforme d;
+        d.versionXestor = JUCE_APPLICATION_VERSION_STRING;
+        d.so = sistema::descricionSO();
+        d.rutas = rutas;
+        d.avisos = catalogo.avisos;
+        d.senRede = catalogo.senRede || gh.usouCacheVella();
+        d.restantesAPI = gh.restantes();
+        d.dataCatalogo = catalogo.data;
+        d.daws = sistema::dawsAbertos();
+        for (auto& p : catalogo.produtos) d.situacions.push_back ({ p, escaner.instalados (p), formatos });
+        d.orfos = escaner.orfos (catalogo.produtos);
+        if (o.dir == juce::File()) d.copias = &copias;
+        if (soActual() == SO::mac) d.firma = [] (const juce::File& f) { return sistema::estadoFirma (f); };
+        out (diagnostico::informe (d));
+        return 0;
+    }
 
     if (o.orde == "--listar")
     {

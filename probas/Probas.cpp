@@ -3,6 +3,7 @@
 #include "Nucleo/Nucleo.h"
 #include "App/CLI.h"
 #include <cstdio>
+#include <set>
 
 #if ! JUCE_WINDOWS
  #include <stdlib.h>
@@ -35,6 +36,15 @@ struct Temporal
 };
 
 const SO so = soActual();
+
+bool executable (const juce::File& f)
+{
+   #if JUCE_WINDOWS
+    return f.existsAsFile();
+   #else
+    return access (f.getFullPathName().toRawUTF8(), X_OK) == 0;
+   #endif
+}
 
 // un bundle de proba coa versión no Info.plist e no moduleinfo.json (e, en Mac, un executable)
 juce::File facerBundle (const juce::File& dir, const juce::String& nome, Formato f, const juce::String& version,
@@ -586,6 +596,275 @@ int main (int argc, char** argv)
         g.senRede = true;
         args = base; args.addArray ({ "--listar", "--sen-rede" });
         proba ("CLI: --sen-rede usa a caché", cli (args) == 0 && saida.joinIntoString ("\n").contains ("Barullo Ley"));
+    }
+
+    // ------------------------------------------------------------ idiomas
+    {
+        proba ("idioma: o do sistema (gl, es; se non, inglés)",
+               idiomaDoCodigo ("gl-ES") == Idioma::gl && idiomaDoCodigo ("gl_ES.UTF-8") == Idioma::gl && idiomaDoCodigo ("es") == Idioma::es
+               && idiomaDoCodigo ("es-419") == Idioma::es && idiomaDoCodigo ("en-US") == Idioma::en && idiomaDoCodigo ("pt-BR") == Idioma::en
+               && idiomaDoCodigo ("") == Idioma::en && idiomaDeClave ("ES") == Idioma::es && ! idiomaDeClave (""));
+        bool repetidas = false, baleiras = false, marcas = true;
+        std::set<std::string> vistas;
+        for (auto& e : textos::taboa())
+        {
+            repetidas = repetidas || ! vistas.insert (e.gl).second;
+            baleiras = baleiras || juce::String::fromUTF8 (e.es).isEmpty() || juce::String::fromUTF8 (e.en).isEmpty();
+            for (auto m : { "%1", "%2", "%3" })
+            {
+                const bool g = juce::String::fromUTF8 (e.gl).contains (m);
+                if (g != juce::String::fromUTF8 (e.es).contains (m) || g != juce::String::fromUTF8 (e.en).contains (m))
+                {
+                    marcas = false;
+                    std::printf ("  (as marcas non casan: %s)\n", e.gl);
+                }
+            }
+        }
+        proba ("traducións: sen chaves repetidas nin baleiras, e os %1 casan", ! repetidas && ! baleiras && marcas && textos::taboa().size() > 100);
+        porIdioma (Idioma::es);
+        const auto es = tr ("Instalar");
+        porIdioma (Idioma::en);
+        const auto en = tr ("Instalar"), falta = tr ("Isto non está na táboa");
+        const auto conArg = tr ("Volver á %1", "0.5.0");
+        porIdioma (Idioma::gl);
+        proba ("traducións: tr segundo o idioma, os %1 e o que falta queda en galego (e anótase)",
+               es == "Instalar" && en == "Install" && tr ("Instalar") == "Instalar" && falta == U ("Isto non está na táboa")
+               && textos::senTraducion().contains (U ("Isto non está na táboa")) && conArg == "Go back to 0.5.0"
+               && tr ("Volver á %1", "%2", "x") == U ("Volver á %2"));
+        proba ("traducións: os meses", textos::mesCurto (6) == U ("xuñ") && [] { porIdioma (Idioma::en); auto m = textos::mesCurto (12); porIdioma (Idioma::gl); return m == "Dec"; }());
+        const auto md = textos::markdownLexible (U ("## Novidades\n\n- **Máis** rápido\n  - un `detalle`\n* [Ligazón](https://x) e ![img](a.png)\n"));
+        const auto md2 = textos::markdownLexible (U ("| Sistema | Descarga |\n|---|:--:|\n| Mac | *a.zip* |\nclic dereito → *Abrir*; 2 * 3"));
+        proba ("notas: o Markdown, lexible (listas, ligazóns, táboas e cursivas)",
+               md == juce::String::fromUTF8 ("Novidades\n\n• Máis rápido\n  • un detalle\n• Ligazón e ")
+               && md2 == U ("Sistema · Descarga\nMac · a.zip\nclic dereito → Abrir; 2 * 3"));
+    }
+
+    // ------------------------------------------------------------ DAW abertos e sistema
+    {
+        const juce::StringArray mac { "/sbin/launchd", "/Applications/Ableton Live 12 Suite.app/Contents/MacOS/Live",
+                                      "/Applications/REAPER.app/Contents/MacOS/REAPER", "/System/Library/CoreServices/Finder.app/Contents/MacOS/Finder",
+                                      "/Users/x/Applications/Barullo Xestor.app/Contents/MacOS/Barullo Xestor", "/Applications/Logic Pro.app/Contents/MacOS/Logic Pro",
+                                      "/Applications/Livestream Studio.app/Contents/MacOS/Livestream" };
+        const juce::StringArray win { "\"System Idle Process\",\"0\",\"Services\",\"0\",\"8 K\"", "\"FL64.exe\",\"4242\",\"Console\",\"1\",\"300.000 K\"",
+                                      "\"Studio One.exe\",\"77\",\"Console\",\"1\",\"1 K\"", "\"explorer.exe\",\"1\",\"Console\",\"1\",\"1 K\"" };
+        const juce::StringArray lin { "systemd", "bitwig-studio", "/opt/bitwig-studio/bin/BitwigStudio --x /home/a/b", "ardour8",
+                                      "/usr/bin/reaper /home/x/canción.rpp", "/usr/lib/firefox/firefox" };
+        proba ("DAW: Mac (o .app), Windows (tasklist) e Linux (ps), sen falsos positivos",
+               sistema::daws (mac) == juce::StringArray { "Ableton Live", "Logic Pro", "REAPER" }
+               && sistema::daws (win) == juce::StringArray { "FL Studio", "Studio One" }
+               && sistema::daws (lin) == juce::StringArray { "REAPER", "Bitwig Studio", "Ardour" }
+               && sistema::daws ({ "/usr/bin/true", "", "Barullo Xestor" }).isEmpty() && sistema::todosOsDaws().contains ("Cubase"));
+        const auto n = sistema::ordeNotificacion (SO::mac, U ("Barullo \"Xestor\""), U ("Hai 2 versións"));
+        proba ("notificación: osascript (comiñas escapadas) e notify-send",
+               n.size() == 3 && n[2] == U ("display notification \"Hai 2 versións\" with title \"Barullo \\\"Xestor\\\"\"")
+               && sistema::ordeNotificacion (SO::lin, "a", "b")[0] == "notify-send" && sistema::ordeNotificacion (SO::win, "a", "b").isEmpty());
+        proba ("firma: ad hoc, Developer ID, sen firma e non válida",
+               sistema::resumoFirma (true, "Executable=/x\nSignature=adhoc\nTeamIdentifier=not set\n") == "ad hoc"
+               && sistema::resumoFirma (true, "Authority=Developer ID Application: Escoita (AB12)\nAuthority=Apple Root CA\n") == "Developer ID: Escoita (AB12)"
+               && sistema::resumoFirma (false, "/x: code object is not signed at all\n") == "sen firma"
+               && sistema::resumoFirma (false, "Signature=adhoc\n") == U ("non válida (ad hoc)")
+               && sistema::descricionSO().isNotEmpty());
+    }
+
+    // ------------------------------------------------------------ copias para volver atrás e presets
+    {
+        Temporal t;
+        GitHubFalso g;
+        const auto u = t.sub ("plugins");
+        Rutas r { Rutas::cartafol (u), {} };
+        CartafolLixo lixo (t.sub ("lixo"));
+        Copias copias (t.dir.getChildFile ("copias"));
+        Instalador inst (r, lixo, nullptr, g, t.sub ("tmp"));
+        inst.copias = &copias;
+        auto ley = produto ("Barullo Ley");
+        const auto b = u.getChildFile ("VST3/Barullo Ley.vst3");
+        inst.instalarArquivo (facerArquivo (t, "BarulloLey", "0.1.0", { { "Barullo Ley", Formato::vst3 } }), ley, { Formato::vst3 }, Version::ler ("0.1.0"));
+        proba ("copias: instalar a primeira vez non garda nada", copias.versions (ley).empty());
+        auto a1 = inst.instalarArquivo (facerArquivo (t, "BarulloLey", "0.1.1", { { "Barullo Ley", Formato::vst3 } }), ley, { Formato::vst3 }, Version::ler ("0.1.1"));
+        const auto gardada = copias.cartafolDe (ley, *Version::ler ("0.1.0")).getChildFile ("vst3/Barullo Ley.vst3");
+        proba ("copias: ao actualizar gárdase a de antes (e o vello vai igual ao Lixo)",
+               a1.ok() && copias.versions (ley).size() == 1 && copias.versions (ley)[0].texto() == "0.1.0"
+               && infoBundle::versionModuleInfo (gardada) == "0.1.0" && lixo.cartafol.getChildFile ("Barullo Ley.vst3").isDirectory());
+        auto volta = inst.restaurar (ley, *Version::ler ("0.1.0"), { Formato::vst3 });
+        auto vs = copias.versions (ley);
+        proba ("copias: volver á 0.1.0 sen rede (e a 0.1.1 queda gardada para volver)",
+               volta.ok() && volta.cambios() == 1 && infoBundle::versionModuleInfo (b) == "0.1.0" && vs.size() == 2
+               && vs[0].texto() == "0.1.1" && vs[1].texto() == "0.1.0" && gardada.isDirectory() && g.pedidos == 0);
+       #if JUCE_MAC
+        proba ("copias (Mac): a restaurada coa firma boa", Instalador::firmaValida (b));
+       #endif
+        inst.instalarArquivo (facerArquivo (t, "BarulloLey", "0.2.0", { { "Barullo Ley", Formato::vst3 } }), ley, { Formato::vst3 }, Version::ler ("0.2.0"));
+        vs = copias.versions (ley);
+        proba ("copias: gárdanse as dúas máis novas (a máis vella quítase)", vs.size() == 2 && vs[0].texto() == "0.1.1" && vs[1].texto() == "0.1.0"
+               && [&] { copias.maximo = 1; inst.instalarArquivo (facerArquivo (t, "BarulloLey", "0.2.1", { { "Barullo Ley", Formato::vst3 } }), ley, { Formato::vst3 }, Version::ler ("0.2.1"));
+                        auto v2 = copias.versions (ley); return v2.size() == 1 && v2[0].texto() == "0.2.0"; }());
+        bool sen = false;
+        try { inst.restaurar (ley, *Version::ler ("0.0.1"), { Formato::vst3 }); } catch (const ErroInstalacion&) { sen = true; }
+        proba ("copias: volver a unha que non está gardada, erro claro", sen);
+
+        const auto docs = t.sub ("Documentos");
+        const auto pr = docs.getChildFile ("Barullo Ley/Presets");
+        pr.createDirectory();
+        pr.getChildFile (U ("Cálido.bley")).replaceWithText ("<preset/>");
+        pr.getChildFile ("Sub/Outro.bley").create();
+        auto serie = produto ("Barullo Enxebres", { "Barullo Filtro", "Barullo Chorus" }, TipoProduto::paquete);
+        docs.getChildFile ("Barullo Chorus/Presets").createDirectory();
+        juce::File zip;
+        auto rz = presets::copiaDeSeguridade (ley, t.dir.getChildFile ("copiasPresets"), zip, docs, juce::Time (2026, 10, 2, 10, 30));
+        juce::ZipFile zf (zip);
+        juce::File zip2;
+        proba ("presets: os cartafoles (tamén os de cada plugin dunha serie) e a copia en .zip",
+               presets::cartafoles (ley, docs).size() == 1 && presets::cartafoles (serie, docs).size() == 1
+               && rz.wasOk() && zip.getFileName() == "Barullo Ley presets 2026-11-02 10.30.zip" && zf.getNumEntries() == 2
+               && zf.getIndexOfFileName (U ("Barullo Ley/Presets/Cálido.bley")) >= 0
+               && presets::copiaDeSeguridade (serie, t.dir, zip2, docs).failed()
+               && presets::cartafolCopias (docs) == docs.getChildFile ("Barullo Xestor/Copias dos presets"));
+    }
+
+    // ------------------------------------------------------------ notas da versión e manual
+    {
+        Temporal t;
+        GitHubFalso g;
+        encherGitHub (g, t);
+        juce::var o;
+        juce::JSON::parse (U (R"({"tag_name":"v0.6.0","body":"## Novidades\r\n- Máis graves","assets":[]})"), o);
+        auto l = GitHub::lanzamento (o);
+        GitHub gh ("callejodev-dotcom", t.sub ("cache"), g);
+        auto sen = GitHub::lanzamento (juce::JSON::parse (R"({"tag_name":"v0.1.1","body":null,"assets":[]})"));
+        g.json ("https://raw.githubusercontent.com/callejodev-dotcom/barulloley/v0.1.1/NOTAS-VERSION.md", U ("- Arranxos\n"));
+        proba ("notas: o texto da versión en GitHub e, se non o ten, o NOTAS-VERSION.md da etiqueta",
+               l && l->notas == U ("## Novidades\n- Máis graves") && sen && sen->notas.isEmpty()
+               && gh.notas ("callejodev-dotcom/barulloley", *sen) == U ("- Arranxos")
+               && gh.notas ("callejodev-dotcom/barullofm", *l) == l->notas
+               && gh.notas ("callejodev-dotcom/barullofm", *sen).isEmpty());
+        Axustes ax;
+        ax.cartafolesLocais.clear();
+        auto c = Descubridor (&gh, ax).descubrir();
+        proba ("manual: a páxina do LEEME (ou docs/MANUAL.md) en GitHub; sen ningún, baleiro",
+               c.buscar ("ley")->manual == "https://github.com/callejodev-dotcom/barulloley/blob/main/LEEME.md" && c.buscar ("fm")->manual.isEmpty());
+    }
+
+    // ------------------------------------------------------------ o propio xestor ao día
+    {
+        juce::var o;
+        juce::JSON::parse (R"({"tag_name":"v0.4.0","assets":[
+            {"name":"BarulloXestor-0.4.0-mac.zip","browser_download_url":"https://x/m.zip","size":1},
+            {"name":"BarulloXestor-0.4.0-windows-x64.zip","browser_download_url":"https://x/w.zip","size":1},
+            {"name":"BarulloXestor-0.4.0-windows-x64-instalador.exe","browser_download_url":"https://x/w.exe","size":1},
+            {"name":"BarulloXestor-0.4.0-linux-x86_64.tar.gz","browser_download_url":"https://x/l.tgz","size":1}]})", o);
+        auto l = GitHub::lanzamento (o);
+        proba ("xestor: o arquivo de cada sistema (en Windows, o instalador)",
+               autoactualizacion::activo (*l, SO::mac)->url == "https://x/m.zip" && autoactualizacion::activo (*l, SO::win)->url == "https://x/w.exe"
+               && autoactualizacion::activo (*l, SO::lin)->url == "https://x/l.tgz");
+        proba ("xestor: hai versión nova só se é máis nova e trae o arquivo",
+               autoactualizacion::nova (l, "0.3.0").has_value() && ! autoactualizacion::nova (l, "0.4.0") && ! autoactualizacion::nova (l, "1.0")
+               && ! autoactualizacion::nova (std::nullopt, "0.1") && ! autoactualizacion::nova (GitHub::lanzamento (juce::JSON::parse (R"({"tag_name":"v9.0","assets":[]})")), "0.1"));
+
+        Temporal t;
+        GitHubFalso g;
+        // o arquivo publicado, coma os de empaquetado/: Mac o .app nun .zip, Linux o binario nun .tar.gz, Windows o instalador
+        const auto ver = juce::String ("0.9.0");
+        juce::File arq;
+        if (so == SO::win)
+        {
+            arq = t.dir.getChildFile ("BarulloXestor-0.9.0-windows-x64-instalador.exe");
+            arq.replaceWithText ("instalador");
+        }
+        else
+        {
+            const juce::String suf = so == SO::mac ? "mac" : "linux-x86_64";
+            const auto pai = t.sub ("fonte");
+            const auto d = so == SO::mac ? pai : pai.getChildFile ("BarulloXestor-0.9.0-" + suf);
+            facerBundle (d, "Barullo Xestor", Formato::app, ver);
+            if (so == SO::mac)
+            {
+                arq = t.dir.getChildFile ("BarulloXestor-0.9.0-mac.zip");
+                executar ({ "/usr/bin/ditto", "-c", "-k", "--sequesterRsrc", "--keepParent", d.getChildFile ("Barullo Xestor.app").getFullPathName(), arq.getFullPathName() });
+            }
+            else
+            {
+                arq = t.dir.getChildFile ("BarulloXestor-0.9.0-linux-x86_64.tar.gz");
+                executar ({ "tar", "-czf", arq.getFullPathName(), "-C", pai.getFullPathName(), d.getFileName() });
+            }
+        }
+        g.ficheiros["https://x/xestor"] = arq;
+        Lanzamento lx;
+        lx.tag = "v0.9.0";
+        lx.activos.push_back ({ arq.getFileName(), "https://x/xestor", arq.getSize(), sha256 (arq) });
+        juce::File lista;
+        auto rp = autoactualizacion::preparar (lx, g, t.sub ("traballo"), lista);
+        proba ("xestor: descarga, comproba a suma e deixa lista a nova",
+               rp.wasOk() && lista.exists() && (so != SO::mac || (lista.getFileName() == "Barullo Xestor.app" && Instalador::firmaValida (lista)))
+               && (so != SO::lin || (lista.getFileName() == "barullo-xestor" && executable (lista))));
+        auto mal = lx;
+        mal.activos[0].sha256 = "00";
+        juce::File l2;
+        proba ("xestor: unha suma que non casa, non se toca nada", autoactualizacion::preparar (mal, g, t.sub ("traballo2"), l2).failed());
+        if (so != SO::win)
+        {
+            const auto apps = t.sub ("Applications");
+            const auto vella = facerBundle (apps, "Barullo Xestor", Formato::app, "0.3.0");
+            CartafolLixo lixo (t.sub ("lixo"));
+            auto rs = autoactualizacion::substituir (lista, vella, lixo);
+            proba ("xestor: a nova no sitio da vella (a vella, ao Lixo)",
+                   rs.wasOk() && vella.exists() && ! lista.exists() && lixo.cartafol.getNumberOfChildFiles (juce::File::findFilesAndDirectories) == 1
+                   && (so != SO::mac || infoBundle::versionPlist (vella) == "0.9.0"));
+        }
+        const auto om = autoactualizacion::ordeReinicio (SO::mac, 123, juce::File ("/Users/x/Applications/Barullo Xestor.app"));
+        const auto ol = autoactualizacion::ordeReinicio (SO::lin, 123, juce::File ("/home/x/.local/bin/barullo-xestor"));
+        const auto gw = autoactualizacion::guionWindows (77, juce::File ("C:\\Temp\\i.exe"), juce::File ("C:\\Users\\A B\\Barullo Xestor.exe"));
+        proba ("xestor: reiniciar cando remata este proceso (sh → open; cmd → o instalador en silencio)",
+               om[0] == "/bin/sh" && om[2].contains ("kill -0 123") && om[2].contains ("open \"$0\"") && om[3].endsWith ("Barullo Xestor.app")
+               && ol[2].contains ("exec \"$0\"") && gw.contains ("PID eq 77") && gw.contains ("/VERYSILENT") && gw.contains ("Barullo Xestor.exe\"")
+               && autoactualizacion::ordeReinicio (SO::win, 1, {}, juce::File ("C:\\t\\r.cmd"))[0] == "cmd.exe");
+       #if ! JUCE_WINDOWS
+        const auto casa = juce::File::getSpecialLocation (juce::File::userHomeDirectory);
+        proba ("xestor: onde vai a nova (o mesmo sitio; se o Mac a abriu dun sitio provisional, ~/Applications)",
+               autoactualizacion::destino (juce::File ("/private/var/folders/x/AppTranslocation/y/d/Barullo Xestor.app"), SO::mac)
+                   == casa.getChildFile ("Applications/Barullo Xestor.app")
+               && autoactualizacion::destino (t.sub ("Apps").getChildFile ("Barullo Xestor.app"), SO::mac) == casa.getChildFile ("Applications/Barullo Xestor.app")
+               && [&] { auto a = facerBundle (t.sub ("Apps2"), "Barullo Xestor", Formato::app, "0.1"); return so != SO::mac || autoactualizacion::destino (a, SO::mac) == a; }());
+       #endif
+        const auto agora = juce::Time::getCurrentTime();
+        proba ("comprobación: unha vez ao día (e se o reloxo foi cara atrás)",
+               comprobacion::toca (0, agora) && ! comprobacion::toca ((agora - juce::RelativeTime::hours (3)).toMilliseconds(), agora)
+               && comprobacion::toca ((agora - juce::RelativeTime::hours (25)).toMilliseconds(), agora)
+               && comprobacion::toca ((agora + juce::RelativeTime::hours (2)).toMilliseconds(), agora));
+        proba ("comprobación: só se avisa do que é novo",
+               comprobacion::novidades ({ "Barullo FM 0.5.1", "Barullo Ley 0.2.0" }, { "Barullo FM 0.5.1" }) == juce::StringArray { "Barullo Ley 0.2.0" }
+               && comprobacion::novidades ({ "a" }, { "a" }).isEmpty());
+    }
+
+    // ------------------------------------------------------------ axustes e informe
+    {
+        Temporal t;
+        Axustes a;
+        a.idioma = "es"; a.bandeja = true; a.copiaPresets = true; a.ultimaComprobacion = 1234567; a.avisadas = { "Barullo FM 0.5.1" };
+        a.gardar (t.dir.getChildFile ("ax.json"));
+        auto b = Axustes::cargar (t.dir.getChildFile ("ax.json"));
+        proba ("axustes: idioma, bandeja, copia dos presets e o xa avisado",
+               b.idioma == "es" && b.bandeja && b.copiaPresets && b.ultimaComprobacion == 1234567 && b.avisadas == a.avisadas
+               && ! Axustes::cargar (t.dir.getChildFile ("non-hai.json")).bandeja);
+
+        const auto u = t.sub ("usuario"), s = t.sub ("sistema");
+        Rutas r { Rutas::cartafol (u), { Rutas::cartafol (s, Ubicacion::Clase::sistema) } };
+        Escaner e (r);
+        auto fm = produto ("Barullo FM", {}, TipoProduto::instrumento);
+        fm.ultima = lanzamentoDe ("0.5.1");
+        facerBundle (u.getChildFile ("VST3"), "Barullo FM", Formato::vst3, "0.5.1");
+        facerBundle (s.getChildFile ("VST3"), "Barullo FM", Formato::vst3, "0.4.0");
+        Copias copias (t.dir.getChildFile ("copias"));
+        copias.gardar (fm, Formato::vst3, u.getChildFile ("VST3/Barullo FM.vst3"), *Version::ler ("0.5.0"));
+        DatosInforme d;
+        d.versionXestor = "0.3.0"; d.so = "macOS"; d.rutas = r; d.copias = &copias; d.daws = { "REAPER" };
+        d.situacions.push_back ({ fm, e.instalados (fm), { Formato::vst3 } });
+        d.firma = [] (const juce::File&) { return juce::String ("ad hoc"); };
+        const auto inf = diagnostico::informe (d);
+        proba ("informe: versións, rutas, duplicadas, firma, copias e DAW",
+               inf.contains ("Barullo Xestor 0.3.0") && inf.contains (U ("Barullo FM — copia vella no sistema · publicada 0.5.1"))
+               && inf.contains ("[DUPLICADA]") && inf.contains ("[firma: ad hoc]") && inf.contains (U ("copias para volver atrás: 0.5.0"))
+               && inf.contains ("DAW abertos: REAPER") && inf.contains ("Copias duplicadas (usuario e sistema): 2")
+               && diagnostico::curta (juce::File::getSpecialLocation (juce::File::userHomeDirectory).getChildFile ("x/y")) == "~" + juce::File::getSeparatorString() + "x" + juce::File::getSeparatorString() + "y");
     }
 
     std::printf ("\n%d probas, %d fallos\n", total, fallos);

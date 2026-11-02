@@ -12,6 +12,11 @@
 //   Papeleira      o Lixo de cada sistema
 //   Admin          o permiso de administrador (osascript, UAC, pkexec)
 //   Instalador     instalar, actualizar e desinstalar
+//   Copias         a versión de antes (para volver atrás) e os presets
+//   Sistema        os DAW abertos, as notificacións e a firma
+//   Autoactualizacion  o propio xestor ao día, e a comprobación de cada día
+//   Diagnostico    o informe para pedir axuda
+//   Texto          galego, castelán e inglés
 #include "Version.h"
 #include "Produto.h"
 #include "Rutas.h"
@@ -24,3 +29,8 @@
 #include "Papeleira.h"
 #include "Admin.h"
 #include "Instalador.h"
+#include "Copias.h"
+#include "Sistema.h"
+#include "Autoactualizacion.h"
+#include "Diagnostico.h"
+#include "Texto.h"

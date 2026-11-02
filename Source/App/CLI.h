@@ -14,7 +14,8 @@ struct Opcions
     bool senAdmin = false, simularAdmin = false, completa = false;
     int ancho = 1040, alto = 760;
     float escala = 2.0f;
-    juce::String escena;   // a captura dun estado concreto: «sen-rede», «traballando», «ao-dia», «baleiro», «captura»
+    juce::String escena;   // a captura dun estado concreto: «sen-rede», «traballando», «ao-dia», «baleiro», «captura»...
+    juce::String idioma;   // a captura neste idioma («gl», «es», «en»)
 };
 
 struct Contexto

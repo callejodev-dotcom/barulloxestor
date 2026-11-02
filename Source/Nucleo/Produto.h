@@ -37,6 +37,7 @@ struct Lanzamento
     juce::String tag, nome, paxina;
     juce::Time publicado;
     std::vector<Activo> activos;
+    juce::String notas;   // o texto da versión en GitHub (Markdown); baleiro se non o ten
 
     std::optional<Version> version() const { return Version::ler (tag); }
     // o arquivo «á man» (bundles soltos) deste sistema: é o que instala o xestor
@@ -61,6 +62,7 @@ struct Produto
     bool lanzamentoConsultado = false;     // preguntouse (se ultima está baleira, é que non hai ningunha)
     juce::StringArray capturas; // as imaxes da interface (URL https:// ou ficheiros locais)
     juce::StringArray capturasDeclaradas;  // as que di produto.env (CAPTURAS), relativas ao repo
+    juce::String manual;        // o manual: URL de GitHub (docs/MANUAL.md, LEEME.md, README.md) ou ficheiro local
 
     juce::String id() const { return curto; }
     bool eSerie() const { return tipo == TipoProduto::paquete; }

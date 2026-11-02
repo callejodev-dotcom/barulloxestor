@@ -130,7 +130,33 @@ Informe Instalador::instalarArquivo (const juce::File& arq, const Produto& p, co
     const auto aberto = base.getChildFile ("aberto");
     auto r = extraer (arq, aberto, so);
     if (r.failed()) throw ErroInstalacion (r.getErrorMessage().toStdString());
+    return instalarCartafol (aberto, p, formatos, esperada, forzar);
+}
 
+Informe Instalador::restaurar (const Produto& p, const Version& v, const std::vector<Formato>& formatos)
+{
+    if (copias == nullptr) throw ErroInstalacion ("non hai copias");
+    const auto orixe = copias->cartafolDe (p, v);
+    if (! orixe.isDirectory())
+        throw ErroInstalacion ((U ("Non hai copia gardada da ") + v.texto() + U (" de ") + p.nome).toStdString());
+    // cópiase ao temporal (a copia queda para outra vez) e instálase de alí, forzando: é unha versión máis vella
+    const auto base = temporal.getChildFile (juce::Uuid().toString());
+    struct Limpar { juce::File f; ~Limpar() { f.deleteRecursively(); } } limpar { base };
+    for (auto& d : orixe.findChildFiles (juce::File::findDirectories, false))
+        for (auto& b : d.findChildFiles (juce::File::findFilesAndDirectories, false))
+        {
+            auto r = Copias::copiar (b, base.getChildFile (d.getFileName()).getChildFile (b.getFileName()));
+            if (r.failed()) throw ErroInstalacion (r.getErrorMessage().toStdString());
+        }
+    // a que se restaura é a vella: as copias do sistema non se tocan
+    struct Volver { bool& b; bool antes; ~Volver() { b = antes; } } volver { quitarVellasDoSistema, quitarVellasDoSistema };
+    quitarVellasDoSistema = false;
+    return instalarCartafol (base, p, formatos, v, true);
+}
+
+Informe Instalador::instalarCartafol (const juce::File& aberto, const Produto& p, const std::vector<Formato>& formatos,
+                                      std::optional<Version> esperada, bool forzar)
+{
     Informe informe;
     std::vector<Atopado> propios;
     for (auto& a : bundles (aberto, so, p))
@@ -223,9 +249,14 @@ void Instalador::instalarBundle (const Atopado& b, const Produto& p, std::option
     auto r = mover (b.ficheiro, provisional);
     if (r.failed()) { informe.engadir (Accion::Tipo::erro, b.plugin, f, r.getErrorMessage()); return; }
 
-    // 2) o vello, ao Lixo (se precisa permiso, pídese)
+    // 2) o vello, ao Lixo (se precisa permiso, pídese); antes, unha copia para poder volver a el
     if (existe)
     {
+        if (copias != nullptr && actual->version && (! nova || *actual->version != *nova))
+        {
+            auto rc = copias->gardar (p, f, destino, *actual->version);
+            if (rc.failed()) informe.engadir (Accion::Tipo::aviso, b.plugin, f, U ("non se puido gardar a copia para volver atrás: ") + rc.getErrorMessage());
+        }
         Informe sub;
         botarVarios ({ { destino, b.plugin, f, false } }, sub, U ("Barullo Xestor quere substituír ") + destino.getFileName() + ".");
         informe.conAdmin += sub.conAdmin;
@@ -352,12 +383,12 @@ Informe Instalador::desinstalar (const Produto& p, const std::vector<Formato>& f
     return informe;
 }
 
-Informe Instalador::botar (const std::vector<Instalado>& copias)
+Informe Instalador::botar (const std::vector<Instalado>& copiasDe)
 {
     Informe informe;
     std::vector<ParaOLixo> lista;
     juce::StringArray nomes;
-    for (auto& c : copias)
+    for (auto& c : copiasDe)
     {
         lista.push_back ({ c.ficheiro, c.plugin, c.formato, c.ubicacion.eSistema() });
         nomes.addIfNotAlreadyThere (c.ficheiro.getFileName());

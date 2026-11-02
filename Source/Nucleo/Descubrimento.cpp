@@ -37,6 +37,11 @@ Axustes Axustes::cargar (const juce::File& f)
         if (! fs.empty()) a.formatos = fs;
     }
     if (o["usarGh"].isBool()) a.usarGh = (bool) o["usarGh"];
+    if (o["idioma"].isString()) a.idioma = o["idioma"].toString();
+    if (o["bandeja"].isBool()) a.bandeja = (bool) o["bandeja"];
+    if (o["copiaPresets"].isBool()) a.copiaPresets = (bool) o["copiaPresets"];
+    if (! o["ultimaComprobacion"].isVoid()) a.ultimaComprobacion = (juce::int64) o["ultimaComprobacion"];
+    lista ("avisadas", a.avisadas);
     return a;
 }
 
@@ -52,6 +57,11 @@ bool Axustes::gardar (const juce::File& f) const
     for (auto x : formatos) fs.add (clave (x));
     o->setProperty ("formatos", lista (fs));
     o->setProperty ("usarGh", usarGh);
+    o->setProperty ("idioma", idioma);
+    o->setProperty ("bandeja", bandeja);
+    o->setProperty ("copiaPresets", copiaPresets);
+    o->setProperty ("ultimaComprobacion", ultimaComprobacion);
+    o->setProperty ("avisadas", lista (avisadas));
     f.getParentDirectory().createDirectory();
     return f.replaceWithText (juce::JSON::toString (juce::var (o)));
 }
@@ -119,6 +129,7 @@ Catalogo Descubridor::descubrir (bool forzar)
                         p->ultima = github->ultimoLanzamento (r.nomeCompleto, forzar);
                         p->lanzamentoConsultado = true;
                         p->capturas = github->capturas (r, p->capturasDeclaradas, forzar);
+                        p->manual = github->manual (r);   // (os .md acaban de pedirse para as capturas)
                         atopados[i] = std::move (p);
                     }
                     catch (const ErroGitHub& e) { avisos[i] = r.nomeCompleto + ": " + e.texto(); }
@@ -148,6 +159,7 @@ Catalogo Descubridor::descubrir (bool forzar)
                 xa = true;
                 if (p.rutaLocal == juce::File()) { p.rutaLocal = local.rutaLocal; p.versionLocal = local.versionLocal; }
                 if (p.capturas.isEmpty()) p.capturas = local.capturas;
+                if (p.manual.isEmpty()) p.manual = local.manual;
             }
         if (! xa) c.produtos.push_back (local);
     }
@@ -178,6 +190,8 @@ std::vector<Produto> Descubridor::locais (const juce::Array<juce::File>& cartafo
             p->rutaLocal = s;
             p->versionLocal = versionCMake (s.getChildFile ("CMakeLists.txt"));
             p->capturas = capturasLocais (s, p->capturasDeclaradas);
+            for (auto md : { "docs/MANUAL.md", "LEEME.md", "README.md" })
+                if (s.getChildFile (md).existsAsFile()) { p->manual = s.getChildFile (md).getFullPathName(); break; }
             bool xa = false;
             for (auto& x : r) xa = xa || x.curto == p->curto;
             if (! xa) r.push_back (*p);
