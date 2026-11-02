@@ -2,6 +2,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 #include "CLI.h"
 #include "Vistas.h"
+#include "Bandeja.h"
 #include <cstdio>
 
 #if JUCE_WINDOWS
@@ -22,7 +23,7 @@ class Xanela : public juce::DocumentWindow
 {
 public:
     explicit Xanela (Modelo& m)
-        : juce::DocumentWindow ("Barullo Xestor", aspecto::col::noite, juce::DocumentWindow::allButtons)
+        : juce::DocumentWindow ("Barullo Xestor", aspecto::col::noite, juce::DocumentWindow::allButtons), modelo (m)
     {
         setUsingNativeTitleBar (true);
         setContentOwned (new vistas::Principal (m), true);
@@ -31,7 +32,41 @@ public:
         centreWithSize (vistas::Principal::anchoInicial, vistas::Principal::altoInicial);
         setVisible (true);
     }
-    void closeButtonPressed() override { juce::JUCEApplication::getInstance()->systemRequestedQuit(); }
+    // co idioma novo: a xanela feita de novo (todos os textos)
+    void refacer()
+    {
+        const auto r = getBounds();
+        setContentOwned (new vistas::Principal (modelo), false);
+        setBounds (r);
+    }
+    // se a icona da bandeja está, pechar a xanela só a agocha (a app queda alí)
+    std::function<bool()> quedarNaBandeja;
+    void closeButtonPressed() override
+    {
+        if (quedarNaBandeja && quedarNaBandeja())
+        {
+            setVisible (false);
+           #if JUCE_MAC
+            juce::Process::setDockIconVisible (false);
+           #endif
+            return;
+        }
+        juce::JUCEApplication::getInstance()->systemRequestedQuit();
+    }
+    void amosar()
+    {
+       #if JUCE_MAC
+        juce::Process::setDockIconVisible (true);
+       #endif
+        setVisible (true);
+        setMinimised (false);
+        toFront (true);
+       #if JUCE_MAC
+        juce::Process::makeForegroundProcess();
+       #endif
+    }
+private:
+    Modelo& modelo;
 };
 
 class App : public juce::JUCEApplication
@@ -45,18 +80,41 @@ public:
     {
         modelo = std::make_unique<Modelo>();
         xanela = std::make_unique<Xanela> (*modelo);
+        xanela->quedarNaBandeja = [this] { return bandeja != nullptr; };
+        modelo->sair = [] { quit(); };
+        modelo->alCambiarIdioma = [this]
+        {
+            // despois do menú (que aínda está a pechar)
+            juce::MessageManager::callAsync ([this] { if (xanela != nullptr) xanela->refacer(); });
+        };
+        modelo->alCambiarBandeja = [this] { porBandeja(); };
+        porBandeja();
         modelo->cargar();
     }
     void shutdown() override
     {
+        bandeja = nullptr;
         xanela = nullptr;
         modelo = nullptr;
     }
     void systemRequestedQuit() override { quit(); }
+    void anotherInstanceStarted (const juce::String&) override { if (xanela != nullptr) xanela->amosar(); }
 
 private:
+    void porBandeja()
+    {
+        if (modelo->axustes.bandeja && bandeja == nullptr)
+            bandeja = std::make_unique<Bandeja> (*modelo, [this] { xanela->amosar(); }, [] { quit(); });
+        else if (! modelo->axustes.bandeja && bandeja != nullptr)
+        {
+            bandeja = nullptr;
+            if (! xanela->isVisible()) xanela->amosar();   // sen icona, a xanela non pode quedar agochada
+        }
+    }
+
     std::unique_ptr<Modelo> modelo;
     std::unique_ptr<Xanela> xanela;
+    std::unique_ptr<Bandeja> bandeja;
 };
 
 juce::JUCEApplicationBase* crearApp() { return new App(); }
@@ -66,6 +124,7 @@ int captura (const xestor::cli::Opcions& o)
 {
     juce::ScopedJuceInitialiser_GUI gui;
     Modelo m;
+    if (auto i = xestor::idiomaDeClave (o.idioma)) xestor::porIdioma (*i);   // só para esta captura
     if (o.formatos) m.axustes.formatos = *o.formatos;   // só para esta captura: non se garda
     if (o.escena != "baleiro") m.cargarAgora (o.refrescar);
     m.escena (o.escena);
@@ -76,6 +135,7 @@ int captura (const xestor::cli::Opcions& o)
         for (auto& pr : m.produtos())
             if (! pr.capturas.isEmpty()) { p.abrirVisor (pr, 0); break; }
     p.resized();
+    p.escena (o.escena);   // os paneis (notas, DAW, xestor, atallos)
     auto im = p.createComponentSnapshot (p.getLocalBounds(), true, o.escala);
     o.captura.deleteFile();
     juce::FileOutputStream out (o.captura);
@@ -85,6 +145,8 @@ int captura (const xestor::cli::Opcions& o)
         return 1;
     }
     std::printf ("Captura: %s (%dx%d)\n", o.captura.getFullPathName().toRawUTF8(), im.getWidth(), im.getHeight());
+    for (auto& f : xestor::textos::senTraducion())
+        std::fprintf (stderr, "sen traducir: %s\n", f.toRawUTF8());
     return 0;
 }
 
@@ -139,6 +201,8 @@ int icona (const xestor::cli::Opcions& o)
     g.setColour (col::laranxa);
     g.fillEllipse (placa.getRight() - 150.0f, placa.getBottom() - 150.0f, 44.0f, 44.0f);
 
+    if (o.icona.getFileNameWithoutExtension().endsWith ("-bandeja"))
+        im = Bandeja::icona (true, false, 256);   // (para revisar a da bandeja)
     o.icona.deleteFile();
     juce::FileOutputStream out (o.icona);
     if (! out.openedOk() || ! juce::PNGImageFormat().writeImageToStream (im, out)) return 1;

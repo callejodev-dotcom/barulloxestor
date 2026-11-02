@@ -30,12 +30,12 @@ juce::String textoAccion (Estado e)
 {
     switch (e)
     {
-        case Estado::nonInstalado:  return "Instalar";
-        case Estado::actualizacion: return "Actualizar";
-        case Estado::incompleto:    return "Completar";
-        case Estado::copiaVella:    return "Quitar a vella";
-        case Estado::soLocal:       return "Cartafol";
-        case Estado::senDatos:      return "Volver probar";
+        case Estado::nonInstalado:  return tr ("Instalar");
+        case Estado::actualizacion: return tr ("Actualizar");
+        case Estado::incompleto:    return tr ("Completar");
+        case Estado::copiaVella:    return tr ("Quitar a vella");
+        case Estado::soLocal:       return tr ("Cartafol");
+        case Estado::senDatos:      return tr ("Volver probar");
         case Estado::alDia:         return {};
     }
     return {};
@@ -46,12 +46,12 @@ juce::String axudaAccion (const Situacion& s)
     const auto& p = s.produto;
     switch (s.estado())
     {
-        case Estado::nonInstalado:  return U ("Descarga a ") + texto (p.ultima->version()) + U (" de GitHub, comproba a suma e instálaa no teu cartafol de plugins (sen contrasinal).");
-        case Estado::actualizacion: return U ("Instala a ") + texto (p.ultima->version()) + U (". A versión de agora vai ao Lixo (nunca se borra); se hai unha copia vella no cartafol do sistema, pídese o contrasinal para quitala.");
-        case Estado::incompleto:    return U ("Instala os plugins da serie que faltan.");
-        case Estado::copiaVella:    return U ("No teu cartafol xa está a última, pero hai unha copia vella no cartafol do sistema que o DAW tamén ve. Lévaa ao Lixo (o sistema pedirá o contrasinal).");
-        case Estado::soLocal:       return U ("Aínda non está publicado: abre o repositorio no disco.");
-        case Estado::senDatos:      return U ("Non se puido preguntar a GitHub por este plugin.");
+        case Estado::nonInstalado:  return tr ("Descarga a %1 de GitHub, comproba a suma e instálaa no teu cartafol de plugins (sen contrasinal).", texto (p.ultima->version()));
+        case Estado::actualizacion: return tr ("Instala a %1. A versión de agora gárdase para poder volver a ela e vai ao Lixo (nunca se borra); se hai unha copia vella no cartafol do sistema, pídese o contrasinal para quitala.", texto (p.ultima->version()));
+        case Estado::incompleto:    return tr ("Instala os plugins da serie que faltan.");
+        case Estado::copiaVella:    return tr ("No teu cartafol xa está a última, pero hai unha copia vella no cartafol do sistema que o DAW tamén ve. Lévaa ao Lixo (o sistema pedirá o contrasinal).");
+        case Estado::soLocal:       return tr ("Aínda non está publicado: abre o repositorio no disco.");
+        case Estado::senDatos:      return tr ("Non se puido preguntar a GitHub por este plugin.");
         case Estado::alDia:         return {};
     }
     return {};
@@ -59,8 +59,7 @@ juce::String axudaAccion (const Situacion& s)
 
 juce::String dataCurta (juce::Time t)
 {
-    static const char* meses[] = { "xan", "feb", "mar", "abr", "mai", "xuñ", "xul", "ago", "set", "out", "nov", "dec" };
-    return juce::String (t.getDayOfMonth()) + " " + U (meses[t.getMonth()]) + " " + juce::String (t.getYear());
+    return juce::String (t.getDayOfMonth()) + " " + textos::mesCurto (t.getMonth() + 1) + " " + juce::String (t.getYear());
 }
 
 // «Barullo Ambiente» → «AMB», «Barullo 7FM» → «7FM»: o rótulo curto dun aparello
@@ -88,7 +87,7 @@ juce::String resumoCopias (const Situacion& s)
     juce::StringArray orde;
     for (auto& i : rel)
     {
-        const auto k = etiqueta (i.formato) + (i.ubicacion.eSistema() ? U (" (sistema)") : juce::String());
+        const auto k = etiqueta (i.formato) + (i.ubicacion.eSistema() ? " (" + tr ("sistema") + ")" : juce::String());
         if (! g.count (k)) orde.add (k);
         g[k].addIfNotAlreadyThere (i.textoVersion.isNotEmpty() ? i.textoVersion : "?");
     }
@@ -101,6 +100,11 @@ juce::String resumoCopias (const Situacion& s)
     }
     return partes.joinIntoString (U ("  ·  "));
 }
+// o que se fai coa tecla principal (e co menú) pasa antes polo aviso do DAW aberto
+bool cambiaPlugins (Estado e)
+{
+    return e == Estado::nonInstalado || e == Estado::actualizacion || e == Estado::incompleto || e == Estado::copiaVella;
+}
 } // namespace
 
 // ==================================================================== tarxeta
@@ -108,10 +112,16 @@ Tarxeta::Tarxeta (Modelo& m, std::function<void (const Produto&, int)> av, std::
     : modelo (m), abrirVisor (std::move (av)), refacer (std::move (rf))
 {
     accion.getProperties().set ("primaria", true);
-    accion.onClick = [this] { modelo.accionPrincipal (produto); };
+    accion.onClick = [this]
+    {
+        if (! cambiaPlugins (modelo.situacion (produto).estado())) { modelo.accionPrincipal (produto); return; }
+        auto* mo = &modelo;
+        const auto p = produto;
+        paneis::protexer (modelo, this, [mo, p] { mo->accionPrincipal (p); });
+    };
     mais.getProperties().set ("icona", "mais");
-    mais.setTitle (U ("Máis"));
-    mais.setTooltip (U ("Reinstalar, desinstalar, amosar no cartafol, a páxina en GitHub…"));
+    mais.setTitle (tr ("Máis"));
+    mais.setTooltip (tr ("Notas da versión, volver atrás, manual, presets, reinstalar, desinstalar…"));
     mais.onClick = [this] { menu(); };
     abrir.getProperties().set ("noLed", true);
     abrir.getProperties().set ("fontSize", 8.5f);
@@ -135,10 +145,11 @@ void Tarxeta::mostrar (const Produto& p)
     accion.setVisible (! textoAccion (e).isEmpty() && ! modelo.traballando (p));
     accion.setEnabled (! modelo.traballando (p));
     abrir.setVisible (p.eSerie());
-    abrir.setButtonText (aberta ? U ("Pechar") : U ("Ver os ") + juce::String (p.plugins.size()));
-    abrir.setTooltip (U ("Os plugins da serie, un a un."));
+    abrir.setButtonText (aberta ? tr ("Pechar") : tr ("Ver os %1", juce::String (p.plugins.size())));
+    abrir.setTooltip (tr ("Os plugins da serie, un a un."));
+    mais.setDescription (tr ("Máis opcións de %1", p.nome));
     setTitle (p.nome);
-    setDescription (p.descricion + ". " + etiqueta (e));
+    setDescription (p.descricion + ". " + tr (etiqueta (e)));
     repaint();
 }
 
@@ -223,7 +234,7 @@ void Tarxeta::paintMiniatura (juce::Graphics& g, juce::Rectangle<float> r)
             g.setColour (col::noite.withAlpha (0.45f));
             g.fillRect (r);
             g.setColour (col::crema);
-            drawCaps (g, "Ampliar", r, juce::Justification::centred, 9.0f, 0.3f);
+            drawCaps (g, tr ("Ampliar"), r, juce::Justification::centred, 9.0f, 0.3f);
         }
     }
     g.setColour (juce::Colours::white.withAlpha (sobreMiniatura ? 0.30f : 0.12f));
@@ -256,7 +267,7 @@ void Tarxeta::paint (juce::Graphics& g)
     // 1) o nome (e o tipo) e, á dereita, o estado cun LED
     {
         auto fila = juce::Rectangle<float> (x, 15.0f, dereita - x, 22.0f);
-        const auto est = upper (etiqueta (e));
+        const auto est = upper (tr (etiqueta (e)));
         const auto fe = caps (8.0f, 0.22f);
         const float we = anchoTexto (fe, est) + 16.0f;
         auto zonaEstado = fila.removeFromRight (we);
@@ -280,21 +291,22 @@ void Tarxeta::paint (juce::Graphics& g)
         if (produto.eSerie())
         {
             const int con = (int) produto.plugins.size() - s.faltan().size();
-            t = juce::String (produto.plugins.size()) + U (" plugins dun mando") + (s.relevantes().empty() ? juce::String() : U ("  ·  ") + juce::String (con) + "/" + juce::String (produto.plugins.size()) + " instalados");
+            t = tr ("%1 plugins dun mando", juce::String (produto.plugins.size()))
+                + (s.relevantes().empty() ? juce::String() : U ("  ·  ") + tr ("%1 instalados", juce::String (con) + "/" + juce::String (produto.plugins.size())));
         }
         if (e == Estado::copiaVella || ! s.vellasDoSistema().empty())
         {
             const auto v = s.vellasDoSistema();
             if (! v.empty())
             {
-                t = U ("Copia vella ") + texto (v.front().version) + U (" no cartafol do sistema · pedirá o contrasinal");
+                t = tr ("Copia vella %1 no cartafol do sistema · pedirá o contrasinal", texto (v.front().version));
                 aviso = true;
             }
         }
         if (t.isEmpty())
         {
-            if (e == Estado::soLocal) t = produto.rutaLocal != juce::File() ? U ("Só no disco: ") + produto.rutaLocal.getFullPathName().replace (juce::File::getSpecialLocation (juce::File::userHomeDirectory).getFullPathName(), "~") : U ("Aínda sen publicar");
-            else if (produto.ultima && produto.ultima->publicado != juce::Time()) t = U ("Publicado o ") + dataCurta (produto.ultima->publicado);
+            if (e == Estado::soLocal) t = produto.rutaLocal != juce::File() ? tr ("Só no disco: %1", diagnostico::curta (produto.rutaLocal)) : tr ("Aínda sen publicar");
+            else if (produto.ultima && produto.ultima->publicado != juce::Time()) t = tr ("Publicado o %1", dataCurta (produto.ultima->publicado));
         }
         g.setColour (aviso ? col::ouro.withAlpha (0.85f) : col::crema3);
         g.setFont (body (11.5f));
@@ -327,7 +339,7 @@ void Tarxeta::paint (juce::Graphics& g)
             g.setColour (luz.withAlpha (0.55f));
             g.fillRoundedRectangle (dentro.withWidth (w).withX (dentro.getX() + (dentro.getWidth() - w) * t), 5.0f);
         }
-        auto fase = modelo.fases.count (produto.id()) ? modelo.fases.at (produto.id()) : juce::String ("traballando");
+        auto fase = tr (modelo.fases.count (produto.id()) ? modelo.fases.at (produto.id()) : juce::String ("traballando"));
         g.setFont (caps (9.0f, 0.2f));
         glowText (g, upper (fase + (v >= 0.0 && v < 1.0 ? "  " + juce::String (juce::roundToInt (v * 100.0)) + " %" : juce::String (U ("…")))),
                   barra, juce::Justification::centred, col::crema);
@@ -338,7 +350,7 @@ void Tarxeta::paint (juce::Graphics& g)
         juce::String vt;
         const auto ult = produto.ultima ? produto.ultima->version() : std::nullopt;
         const auto ins = s.versionInstalada();
-        if (e == Estado::soLocal) vt = produto.versionLocal ? U ("local ") + produto.versionLocal->texto() : juce::String ("local");
+        if (e == Estado::soLocal) vt = produto.versionLocal ? tr ("local") + " " + produto.versionLocal->texto() : tr ("local");
         else if (e == Estado::actualizacion && ins && ult) vt = ins->texto() + U ("  →  ") + ult->texto();
         else if (ult) vt = "v" + ult->texto();
         else vt = U ("—");
@@ -373,11 +385,18 @@ void Tarxeta::paint (juce::Graphics& g)
     }
 }
 
+// o visor da versión «0.5.0 → 0.5.1»: un clic abre as notas da nova
+bool Tarxeta::sobreVersion (juce::Point<int> p) const
+{
+    const auto x = zonaMiniatura().getRight() + 16, y = altoBase - 14 - 32;
+    return produto.ultima && ! modelo.traballando (produto) && juce::Rectangle<int> (x, y, 168, 32).contains (p) && p.x < accion.getX() - 8;
+}
+
 void Tarxeta::mouseMove (const juce::MouseEvent& e)
 {
     const bool s = zonaMiniatura().contains (e.getPosition()) && ! produto.capturas.isEmpty() && modelo.miniatura (produto).isValid();
     if (s != sobreMiniatura) { sobreMiniatura = s; repaint (zonaMiniatura()); }
-    setMouseCursor (s ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
+    setMouseCursor (s || sobreVersion (e.getPosition()) ? juce::MouseCursor::PointingHandCursor : juce::MouseCursor::NormalCursor);
 }
 
 void Tarxeta::mouseExit (const juce::MouseEvent&)
@@ -388,6 +407,7 @@ void Tarxeta::mouseExit (const juce::MouseEvent&)
 void Tarxeta::mouseUp (const juce::MouseEvent& e)
 {
     if (zonaMiniatura().contains (e.getPosition()) && ! produto.capturas.isEmpty() && abrirVisor) abrirVisor (produto, 0);
+    else if (sobreVersion (e.getPosition())) paneis::notas (modelo, this, produto);
 }
 
 void Tarxeta::menu()
@@ -397,25 +417,41 @@ void Tarxeta::menu()
     juce::PopupMenu m;
     m.addSectionHeader (produto.nome);
     const bool hai = ! s.relevantes().empty();
+    const bool libre = ! modelo.traballando (produto);
+    // o que cambia os plugins pasa antes polo aviso do DAW aberto
+    auto* mo = &modelo;
+    const auto p = produto;
+    juce::Component::SafePointer<Tarxeta> sp (this);
+    auto protexido = [mo, sp] (std::function<void()> f) { return [m2 = mo, s2 = sp, f] { paneis::protexer (*m2, s2.getComponent(), f); }; };
     if (produto.ultima)
-        m.addItem (U ("Reinstalar a ") + texto (produto.ultima->version()), hai && ! modelo.traballando (produto), false, [this] { modelo.instalar (produto, true); });
+        m.addItem (tr ("Notas da versión %1", texto (produto.ultima->version())), [this] { paneis::notas (modelo, this, produto); });
+    if (produto.ultima)
+        m.addItem (tr ("Reinstalar a %1", texto (produto.ultima->version())), hai && libre, false, protexido ([mo, p] { mo->instalar (p, true); }));
+    for (auto& v : modelo.copiasDe (produto))
+        m.addItem (tr ("Volver á %1 (gardada, sen rede)", v.texto()), hai && libre, false, protexido ([mo, p, v] { mo->volverA (p, v); }));
     if (! s.vellasDoSistema().empty() && e != Estado::copiaVella)
-        m.addItem (U ("Quitar a copia vella do sistema…"), true, false, [this] { modelo.quitarCopiasVellas (produto); });
-    m.addItem (U ("Desinstalar…"), hai && ! modelo.traballando (produto), false, [this] { confirmarDesinstalar(); });
+        m.addItem (tr ("Quitar a copia vella do sistema…"), libre, false, protexido ([mo, p] { mo->quitarCopiasVellas (p); }));
+    m.addItem (tr ("Desinstalar…"), hai && libre, false, [this] { confirmarDesinstalar(); });
     m.addSeparator();
+    if (produto.manual.isNotEmpty())
+        m.addItem (tr ("Abrir o manual"), [mo, p] { mo->abrirManual (p); });
+    const auto pres = modelo.cartafolesPresets (produto);
+    if (! pres.isEmpty())
+    {
+        m.addItem (pres.size() == 1 ? tr ("Abrir o cartafol dos presets") : tr ("Abrir os cartafoles dos presets"), [pres] { for (auto& f : pres) f.revealToUser(); });
+        m.addItem (tr ("Facer unha copia dos presets"), [mo, p] { mo->copiaPresets (p); });
+    }
     if (! produto.capturas.isEmpty())
-        m.addItem (produto.capturas.size() == 1 ? U ("Ver a captura") : U ("Ver as ") + juce::String (produto.capturas.size()) + " capturas", [this] { abrirVisor (produto, 0); });
+        m.addItem (produto.capturas.size() == 1 ? tr ("Ver a captura") : tr ("Ver as %1 capturas", juce::String (produto.capturas.size())), [this] { abrirVisor (produto, 0); });
     if (hai)
     {
         const auto f = s.relevantes().front().ficheiro;
-        m.addItem (U ("Amosar no cartafol"), [f] { f.revealToUser(); });
+        m.addItem (tr ("Amosar no cartafol"), [f] { f.revealToUser(); });
     }
-    if (produto.ultima && produto.ultima->paxina.isNotEmpty())
-        m.addItem (U ("Notas da versión"), [u = produto.ultima->paxina] { juce::URL (u).launchInDefaultBrowser(); });
     if (produto.repo.isNotEmpty())
-        m.addItem (U ("O repositorio en GitHub"), [u = produto.paxinaRepo()] { juce::URL (u).launchInDefaultBrowser(); });
+        m.addItem (tr ("O repositorio en GitHub"), [u = produto.paxinaRepo()] { juce::URL (u).launchInDefaultBrowser(); });
     if (produto.rutaLocal != juce::File())
-        m.addItem (U ("O repositorio no disco"), [f = produto.rutaLocal] { f.revealToUser(); });
+        m.addItem (tr ("O repositorio no disco"), [f = produto.rutaLocal] { f.revealToUser(); });
     m.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&mais));
 }
 
@@ -429,29 +465,38 @@ void Tarxeta::confirmarDesinstalar()
         copias.add (U ("· ") + i.ficheiro.getFullPathName() + (i.textoVersion.isNotEmpty() ? " (" + i.textoVersion + ")" : juce::String()));
         admin = admin || i.ubicacion.eSistema();
     }
-    auto msg = U ("Vai ao Lixo (de alí pódese recuperar):\n\n") + copias.joinIntoString ("\n");
-    if (admin) msg << U ("\n\nHai copias no cartafol do sistema: o sistema pedirá o contrasinal de administrador.");
+    auto msg = tr ("Vai ao Lixo (de alí pódese recuperar):") + "\n\n" + copias.joinIntoString ("\n");
+    if (admin) msg << "\n\n" << tr ("Hai copias no cartafol do sistema: o sistema pedirá o contrasinal de administrador.");
     juce::Component::SafePointer<Tarxeta> sp (this);
     juce::AlertWindow::showAsync (juce::MessageBoxOptions()
                                       .withIconType (juce::MessageBoxIconType::QuestionIcon)
-                                      .withTitle (U ("Desinstalar ") + produto.nome)
+                                      .withTitle (tr ("Desinstalar %1", produto.nome))
                                       .withMessage (msg)
-                                      .withButton (U ("Levar ao Lixo"))
-                                      .withButton (U ("Cancelar"))
+                                      .withButton (tr ("Levar ao Lixo"))
+                                      .withButton (tr ("Cancelar"))
                                       .withAssociatedComponent (this),
                                   [sp] (int r)
                                   {
-                                      if (sp != nullptr && r == 1) sp->modelo.desinstalar (sp->produto);
+                                      if (sp == nullptr || r != 1) return;
+                                      auto* m = &sp->modelo;
+                                      const auto p = sp->produto;
+                                      paneis::protexer (*m, sp.getComponent(), [m, p] { m->desinstalar (p); });
                                   });
 }
 
 // ==================================================================== órfos
 FilaOrfo::FilaOrfo (Modelo& m, const Instalado& i) : modelo (m), inst (i)
 {
-    quitar.setButtonText (U ("Ao Lixo"));
+    quitar.setButtonText (tr ("Ao Lixo"));
     quitar.getProperties().set ("noLed", true);
-    quitar.setTooltip (U ("Un plugin de Escoita que non está en GitHub (compilado na casa?). Lévao ao Lixo."));
-    quitar.onClick = [this] { modelo.desinstalarOrfo (inst); };
+    quitar.setTooltip (tr ("Un plugin de Escoita que non está en GitHub (compilado na casa?). Lévao ao Lixo."));
+    quitar.setDescription (tr ("Levar %1 ao Lixo", i.plugin));
+    quitar.onClick = [this]
+    {
+        auto* mo = &modelo;
+        const auto x = inst;
+        paneis::protexer (modelo, this, [mo, x] { mo->desinstalarOrfo (x); });
+    };
     addAndMakeVisible (quitar);
 }
 
@@ -476,8 +521,14 @@ void FilaOrfo::paint (juce::Graphics& g)
 Lista::Lista (Modelo& m, std::function<void (const Produto&, int)> av) : modelo (m), abrirVisor (std::move (av))
 {
     pecharFaixa.getProperties().set ("icona", "pechar");
-    pecharFaixa.setTitle ("Pechar o aviso");
-    pecharFaixa.onClick = [this] { modelo.erro.clear(); actualizar(); };
+    pecharFaixa.setTitle (tr ("Pechar o aviso"));
+    pecharFaixa.onClick = [this]
+    {
+        if (! modelo.dawsAgardados.isEmpty()) { modelo.deixarDeAgardar(); return; }
+        if (modelo.erro.isNotEmpty()) modelo.erro.clear();
+        else modelo.lembranza.clear();
+        actualizar();
+    };
     addChildComponent (pecharFaixa);
 }
 
@@ -519,12 +570,13 @@ void Lista::colocar (int ancho)
     int y = 10;
     titulos.clear();
 
-    // o aviso de arriba: un erro (que se pecha) ou «sen conexión»
-    const bool hai = modelo.erro.isNotEmpty() || (modelo.senRede() && ! modelo.produtos().empty());
-    pecharFaixa.setVisible (modelo.erro.isNotEmpty());
+    // o aviso de arriba: un erro (que se pecha), agardando polo DAW, «volve escanear» ou «sen conexión»
+    const auto aviso = textoFaixa();
+    const bool hai = aviso.isNotEmpty();
+    pecharFaixa.setVisible (hai && ! (modelo.erro.isEmpty() && modelo.dawsAgardados.isEmpty() && modelo.lembranza.isEmpty()));
     if (hai)
     {
-        const int lin = modelo.erro.isNotEmpty() ? juce::jlimit (1, 4, juce::StringArray::fromLines (modelo.erro).size()) : 1;
+        const int lin = juce::jlimit (1, 4, juce::StringArray::fromLines (aviso).size());
         faixa = { m, y, ancho - 2 * m, 24 + lin * 18 };
         pecharFaixa.setBounds (faixa.getRight() - 40, faixa.getY() + 6, 32, 28);
         y = faixa.getBottom() + 14;
@@ -559,7 +611,7 @@ void Lista::colocar (int ancho)
                 const auto oe = modelo.situacion (o->getProduto()).estado();
                 n += (oe == Estado::soLocal ? TipoProduto::desconecido : o->getProduto().tipo) == tp ? 1 : 0;
             }
-            titulos.push_back ({ tp == TipoProduto::desconecido ? U ("Só neste ordenador (sen publicar)") : titulo (tp), { m + 4, y + 6, ancho - 2 * m - 8, 16 }, n });
+            titulos.push_back ({ tp == TipoProduto::desconecido ? tr ("Só neste ordenador (sen publicar)") : tr (titulo (tp)), { m + 4, y + 6, ancho - 2 * m - 8, 16 }, n });
             y += 32;
         }
         fila.push_back (t.get());
@@ -568,11 +620,22 @@ void Lista::colocar (int ancho)
     pecharFila();
     if (! orfos.empty())
     {
-        titulos.push_back ({ U ("Outros de Escoita neste ordenador"), { m + 4, y + 6, ancho - 2 * m - 8, 16 }, (int) orfos.size() });
+        titulos.push_back ({ tr ("Outros de Escoita neste ordenador"), { m + 4, y + 6, ancho - 2 * m - 8, 16 }, (int) orfos.size() });
         y += 32;
         for (auto& o : orfos) { o->setBounds (m, y, ancho - 2 * m, 46); y += 52; }
     }
     setSize (ancho, y + 8);
+}
+
+juce::String Lista::textoFaixa() const
+{
+    if (modelo.erro.isNotEmpty()) return modelo.erro;
+    if (! modelo.dawsAgardados.isEmpty())
+        return tr ("Agardando a que se peche %1: faise só cando o peches. (Esc ou a × para non agardar)", modelo.dawsAgardados.joinIntoString (", "));
+    if (modelo.lembranza.isNotEmpty()) return modelo.lembranza;
+    if (modelo.senRede() && ! modelo.produtos().empty())
+        return tr ("Sen conexión con GitHub: amósase o último que se soubo. As versións poden non ser as últimas.");
+    return {};
 }
 
 void Lista::paint (juce::Graphics& g)
@@ -589,12 +652,13 @@ void Lista::paint (juce::Graphics& g)
         auto r = faixa.toFloat();
         paintWell (g, r, 10.0f);
         const bool erro = modelo.erro.isNotEmpty();
-        const auto c = erro ? col::laranxa : col::ouro;
+        const bool agarda = ! erro && ! modelo.dawsAgardados.isEmpty();
+        const bool lembra = ! erro && ! agarda && modelo.lembranza.isNotEmpty();
+        const auto c = erro ? col::laranxa : lembra ? col::verde : agarda ? col::azul : col::ouro;
         paintLed (g, { r.getX() + 18.0f, r.getY() + 21.0f }, true, c);
-        g.setColour (erro ? col::crema : col::crema2);
+        g.setColour (erro || agarda ? col::crema : col::crema2);
         g.setFont (body (13.0f));
-        const auto t = erro ? modelo.erro : U ("Sen conexión con GitHub: amósase o último que se soubo. As versións poden non ser as últimas.");
-        g.drawFittedText (t, r.withTrimmedLeft (34.0f).withTrimmedRight (erro ? 48.0f : 14.0f).reduced (0.0f, 10.0f).toNearestInt(),
+        g.drawFittedText (textoFaixa(), r.withTrimmedLeft (34.0f).withTrimmedRight (pecharFaixa.isVisible() ? 48.0f : 14.0f).reduced (0.0f, 10.0f).toNearestInt(),
                           juce::Justification::topLeft, 4, 1.0f);
     }
 }
@@ -605,7 +669,7 @@ Visor::Visor (Modelo& m) : modelo (m)
     anterior.getProperties().set ("icona", "anterior");
     seguinte.getProperties().set ("icona", "seguinte");
     pecharBtn.getProperties().set ("icona", "pechar");
-    anterior.setTitle ("Anterior"); seguinte.setTitle ("Seguinte"); pecharBtn.setTitle ("Pechar");
+    anterior.setTitle (tr ("Anterior")); seguinte.setTitle (tr ("Seguinte")); pecharBtn.setTitle (tr ("Pechar"));
     anterior.onClick = [this] { ir (-1); };
     seguinte.onClick = [this] { ir (1); };
     pecharBtn.onClick = [this] { pechar(); };
@@ -681,7 +745,7 @@ void Visor::paint (juce::Graphics& g)
     g.setColour (juce::Colours::white.withAlpha (0.14f));
     g.drawRoundedRectangle (r.reduced (0.5f), 12.0f, 1.0f);
     g.setColour (col::crema3);
-    drawCaps (g, U ("Esc para pechar") + (produto.capturas.size() > 1 ? U ("  ·  ‹ › para pasar") : juce::String()),
+    drawCaps (g, tr ("Esc para pechar") + (produto.capturas.size() > 1 ? U ("  ·  ") + tr ("‹ › para pasar") : juce::String()),
               juce::Rectangle<float> (0.0f, (float) getHeight() - 30.0f, (float) getWidth(), 14.0f), juce::Justification::centred, 7.5f, 0.3f);
 }
 
@@ -710,27 +774,32 @@ Principal::Principal (Modelo& m)
     {
         auto b = std::make_unique<juce::TextButton> (etiqueta (f));
         b->setClickingTogglesState (false);
-        b->setTooltip (U ("Mirar e instalar ") + etiqueta (f) + U (". Pódense escoller varios; por defecto, só VST3."));
+        b->setTooltip (tr ("Mirar e instalar %1. Pódense escoller varios; por defecto, só VST3.", etiqueta (f)));
         b->onClick = [this, f] { modelo.cambiarFormato (f); };
         addAndMakeVisible (*b);
         formatoBtn.push_back (std::move (b));
         formatos.push_back (f);
     }
     refrescar.getProperties().set ("icona", "refrescar");
-    refrescar.setTitle ("Comprobar agora");
-    refrescar.setTooltip (U ("Preguntar agora a GitHub polas últimas versións (Cmd/Ctrl + R)."));
+    refrescar.setTitle (tr ("Comprobar agora"));
+    refrescar.setTooltip (tr ("Preguntar agora a GitHub polas últimas versións (Cmd/Ctrl + R)."));
     refrescar.onClick = [this] { modelo.cargar (true); };
     actualizarTodo.getProperties().set ("primaria", true);
-    actualizarTodo.setTooltip (U ("Actualizar todo o que ten versión nova (e quitar as copias vellas do sistema). O que se substitúe vai ao Lixo."));
-    actualizarTodo.onClick = [this] { modelo.actualizarTodo(); };
+    actualizarTodo.setTooltip (tr ("Actualizar todo o que ten versión nova (e quitar as copias vellas do sistema). O que se substitúe vai ao Lixo."));
+    actualizarTodo.onClick = [this] { paneis::protexer (modelo, this, [mo = &modelo] { mo->actualizarTodo(); }); };
     volverProbar.getProperties().set ("primaria", true);
-    volverProbar.setButtonText (U ("Volver probar"));
+    volverProbar.setButtonText (tr ("Volver probar"));
     volverProbar.onClick = [this] { modelo.cargar (true); };
+    xestorBtn.getProperties().set ("icona", "mais");
+    xestorBtn.setTitle (tr ("Barullo Xestor: axustes"));
+    xestorBtn.setTooltip (tr ("Idioma, comprobar cada día, copia dos presets, copiar o informe, atallos do teclado…"));
+    xestorBtn.onClick = [this] { paneis::menuXestor (modelo, &xestorBtn); };
     addAndMakeVisible (refrescar);
     addAndMakeVisible (actualizarTodo);
+    addAndMakeVisible (xestorBtn);
     addChildComponent (volverProbar);
     novaVersion.getProperties().set ("noLed", true);
-    novaVersion.onClick = [] { juce::URL (escoita::Actualizacions::downloadsUrl()).launchInDefaultBrowser(); };
+    novaVersion.onClick = [this] { paneis::xestorNovo (modelo, this); };
     addChildComponent (novaVersion);
 
     vista.setViewedComponent (&lista, false);
@@ -740,7 +809,11 @@ Principal::Principal (Modelo& m)
     vista.setSingleStepSizes (0, 40);
     addAndMakeVisible (vista);
     addChildComponent (visor);
+    addChildComponent (modal);
     setWantsKeyboardFocus (true);
+    // co teclado: Tab percorre a cabeceira e despois as tarxetas, na orde en que se ven
+    setFocusContainerType (juce::Component::FocusContainerType::keyboardFocusContainer);
+    juce::Desktop::getInstance().addFocusChangeListener (this);
     modelo.addChangeListener (this);
     setSize (anchoInicial, altoInicial);
     actualizar();
@@ -749,6 +822,7 @@ Principal::Principal (Modelo& m)
 
 Principal::~Principal()
 {
+    juce::Desktop::getInstance().removeFocusChangeListener (this);
     modelo.removeChangeListener (this);
     setLookAndFeel (nullptr);
 }
@@ -765,7 +839,7 @@ void Principal::actualizar()
         formatoBtn[i]->setToggleState (on, juce::dontSendNotification);
     }
     const auto n = modelo.porActualizar().size();
-    actualizarTodo.setButtonText ((getWidth() < 940 ? U ("Actualizar  ·  ") : U ("Actualizar todo  ·  ")) + juce::String ((int) n));
+    actualizarTodo.setButtonText ((getWidth() < 940 ? tr ("Actualizar") : tr ("Actualizar todo")) + U ("  ·  ") + juce::String ((int) n));
     actualizarTodo.setVisible (n > 0);
     bool algunTraballo = ! modelo.traballos.empty();
     actualizarTodo.setEnabled (! algunTraballo);
@@ -782,14 +856,19 @@ void Principal::timerCallback()
     // o LED de «comprobando» e as barras sen fin respiran
     pulso += 0.08f;
     if (modelo.cargando) repaint (resumo);
-    if (versions == nullptr && isShowing()) versions = std::make_unique<juce::SharedResourcePointer<escoita::Actualizacions>>();   // só coa xanela aberta (non na captura)
-    if (versions != nullptr)
+    // a versión nova do propio xestor (e o progreso da descarga)
     {
-        const auto nv = (*versions)->newVersion();
-        if (nv.isNotEmpty() != novaVersion.isVisible())
+        juce::String t;
+        if (modelo.progresoXestor >= 0.0)
+            t = tr ("Descargando Barullo Xestor %1", texto (modelo.xestorNovo ? modelo.xestorNovo->version() : std::nullopt))
+                + "  " + juce::String (juce::roundToInt (modelo.progresoXestor * 100.0)) + " %";
+        else if (modelo.xestorNovo)
+            t = tr ("Hai Barullo Xestor %1 · actualizar", texto (modelo.xestorNovo->version()));
+        if (t != novaVersion.getButtonText() || t.isNotEmpty() != novaVersion.isVisible())
         {
-            novaVersion.setButtonText (U ("Hai unha versión nova do xestor: ") + nv + U (" · descargar"));
-            novaVersion.setVisible (nv.isNotEmpty());
+            novaVersion.setButtonText (t);
+            novaVersion.setVisible (t.isNotEmpty());
+            novaVersion.setEnabled (modelo.progresoXestor < 0.0);
             repaint();
         }
     }
@@ -799,7 +878,9 @@ void Principal::timerCallback()
 bool Principal::keyPressed (const juce::KeyPress& k)
 {
     if (k == juce::KeyPress ('r', juce::ModifierKeys::commandModifier, 0) || k == juce::KeyPress::F5Key) { modelo.cargar (true); return true; }
+    if (k == juce::KeyPress::escapeKey && modal.isVisible()) { modal.pecharSen(); return true; }
     if (k == juce::KeyPress::escapeKey && visor.isVisible()) { visor.pechar(); return true; }
+    if (k == juce::KeyPress::escapeKey && ! modelo.dawsAgardados.isEmpty()) { modelo.deixarDeAgardar(); return true; }
     return false;
 }
 
@@ -816,8 +897,10 @@ void Principal::resized()
     placa = { cabeceira.getX() + 10, cabeceira.getY() + 8, 196, cabeceira.getHeight() - 16 };
     const int bh = 34, by = cabeceira.getCentreY() - bh / 2;
     const bool estreita = W < 940;
-    actualizarTodo.setButtonText ((estreita ? U ("Actualizar  ·  ") : U ("Actualizar todo  ·  ")) + juce::String ((int) modelo.porActualizar().size()));
+    actualizarTodo.setButtonText ((estreita ? tr ("Actualizar") : tr ("Actualizar todo")) + U ("  ·  ") + juce::String ((int) modelo.porActualizar().size()));
     int x = cabeceira.getRight() - 12;
+    xestorBtn.setBounds (x - 36, by, 36, bh);
+    x -= 36 + 8;
     if (actualizarTodo.isVisible())
     {
         const int aw = estreita ? 150 : 196;
@@ -836,8 +919,9 @@ void Principal::resized()
     vista.setBounds (corpo);
     lista.colocar (corpo.getWidth() - (lista.getHeight() > corpo.getHeight() ? vista.getScrollBarThickness() : 0));
     volverProbar.setBounds (W / 2 - 80, corpo.getCentreY() + 40, 160, 36);
-    novaVersion.setBounds (W / 2 - 180, H - 29, 360, 24);
+    novaVersion.setBounds (W / 2 - 200, H - 29, 400, 24);
     visor.setBounds (getLocalBounds());
+    modal.setBounds (getLocalBounds());
 }
 
 void Principal::paintCabeceira (juce::Graphics& g)
@@ -853,7 +937,7 @@ void Principal::paintCabeceira (juce::Graphics& g)
         auto sub = p.reduced (14.0f, 0.0f).withTop (p.getBottom() - 19.0f).withHeight (11.0f);
         const float we = marcaEscoita (g, sub, 7.5f, 0.36f, col::crema2);
         g.setColour (col::crema2);
-        drawCaps (g, U (" · Ferramentas"), sub.withTrimmedLeft (we + 4.0f), juce::Justification::centredLeft, 7.5f, 0.36f);
+        drawCaps (g, U (" · ") + tr ("Ferramentas"), sub.withTrimmedLeft (we + 4.0f), juce::Justification::centredLeft, 7.5f, 0.36f);
     }
     // o visor do resumo: que hai que facer, nunha liña, e debaixo os números
     if (resumo.getWidth() > 120)
@@ -866,18 +950,18 @@ void Principal::paintCabeceira (juce::Graphics& g)
         bool aceso = true;
         if (modelo.cargando && ! modelo.temCatalogo())
         {
-            grande = U ("Comprobando…");
+            grande = tr ("Comprobando…");
             luz = col::laranxa;
             aceso = std::sin (pulso * 2.0f) > -0.2f;
         }
         else if (baleiro())
         {
-            grande = modelo.senRede() ? U ("Sen conexión") : U ("Ningún plugin");
+            grande = modelo.senRede() ? tr ("Sen conexión") : tr ("Ningún plugin");
             luz = col::ouro;
         }
         else if (! modelo.traballos.empty())
         {
-            grande = U ("Traballando…");
+            grande = tr ("Traballando…");
             luz = col::laranxa;
         }
         else if (n > 0)
@@ -885,20 +969,20 @@ void Principal::paintCabeceira (juce::Graphics& g)
             int novas = 0, vellas = 0;
             for (auto* p : modelo.porActualizar()) (modelo.situacion (*p).estado() == Estado::copiaVella ? vellas : novas)++;
             juce::StringArray partes;
-            if (novas > 0) partes.add (novas == 1 ? U ("1 versión nova") : juce::String (novas) + U (" versións novas"));
-            if (vellas > 0) partes.add (vellas == 1 ? U ("1 copia vella") : juce::String (vellas) + U (" copias vellas"));
+            if (novas > 0) partes.add (novas == 1 ? tr ("1 versión nova") : tr ("%1 versións novas", juce::String (novas)));
+            if (vellas > 0) partes.add (vellas == 1 ? tr ("1 copia vella") : tr ("%1 copias vellas", juce::String (vellas)));
             grande = partes.joinIntoString (U (" · "));
             luz = col::laranxa;
         }
-        else grande = U ("Todo ao día");
+        else grande = tr ("Todo ao día");
         int instalados = 0;
         for (auto& p : modelo.produtos()) instalados += modelo.situacion (p).relevantes().empty() ? 0 : 1;
         juce::StringArray fe;
         for (auto f : modelo.axustes.formatos) fe.add (etiqueta (f));
-        pequeno = juce::String (instalados) + " de " + juce::String ((int) modelo.produtos().size()) + U (" instalados · ") + fe.joinIntoString (" + ");
-        if (baleiro()) pequeno = modelo.cargando ? U ("Os repositorios de ") + modelo.axustes.propietario : U ("Volve probar co botón de abaixo");
-        else if (modelo.cargando && modelo.temCatalogo()) pequeno = U ("Comprobando en GitHub…");
-        else if (modelo.dataCatalogo() != juce::Time()) pequeno << U (" · ") << (modelo.senRede() ? U ("gardado ás ") : U ("ás ")) << modelo.dataCatalogo().formatted ("%H:%M");
+        pequeno = tr ("%1 de %2 instalados", juce::String (instalados), juce::String ((int) modelo.produtos().size())) + U (" · ") + fe.joinIntoString (" + ");
+        if (baleiro()) pequeno = modelo.cargando ? tr ("Os repositorios de %1", modelo.axustes.propietario) : tr ("Volve probar co botón de abaixo");
+        else if (modelo.cargando && modelo.temCatalogo()) pequeno = tr ("Comprobando en GitHub…");
+        else if (modelo.dataCatalogo() != juce::Time()) pequeno << U (" · ") << tr (modelo.senRede() ? "gardado ás %1" : "ás %1", modelo.dataCatalogo().formatted ("%H:%M"));
         paintLed (g, { r.getX() + 18.0f, r.getCentreY() - 7.0f }, aceso, luz);
         float tam = 12.5f;
         const float sitio = r.getWidth() - 44.0f;
@@ -922,19 +1006,19 @@ void Principal::paintBaleiro (juce::Graphics& g)
     juce::Colour c = col::ouro;
     if (modelo.cargando)
     {
-        t = U ("Preguntando a GitHub…");
-        d = U ("Buscando os plugins de Escoita: os repositorios con packaging/produto.env e a súa última versión.");
+        t = tr ("Preguntando a GitHub…");
+        d = tr ("Buscando os plugins de Escoita: os repositorios con packaging/produto.env e a súa última versión.");
         c = col::laranxa;
     }
     else if (modelo.senRede())
     {
-        t = U ("Sen conexión");
-        d = U ("Non se puido falar con GitHub e aínda non hai nada gardado. Mira a conexión e volve probar.");
+        t = tr ("Sen conexión");
+        d = tr ("Non se puido falar con GitHub e aínda non hai nada gardado. Mira a conexión e volve probar.");
     }
     else
     {
-        t = U ("Ningún plugin");
-        d = U ("Non se atopou ningún plugin de Escoita. Se acabas de publicar un, volve probar nun intre.");
+        t = tr ("Ningún plugin");
+        d = tr ("Non se atopou ningún plugin de Escoita. Se acabas de publicar un, volve probar nun intre.");
     }
     paintLed (g, { r.getCentreX(), r.getY() + 36.0f }, ! modelo.cargando || std::sin (pulso * 2.0f) > -0.2f, c);
     g.setFont (caps (15.0f, 0.16f));
@@ -956,7 +1040,7 @@ void Principal::paint (juce::Graphics& g)
     const bool ancha = getWidth() >= 940;
     const float we = marcaEscoita (g, r, 8.0f, 0.3f, col::crema3);
     g.setColour (col::crema3);
-    drawCaps (g, (ancha ? U (" Laboratorio creativo · v") : U (" · v")) + escoita::Actualizacions::currentVersion(), r.withTrimmedLeft (we + 3.0f), juce::Justification::centredLeft, 8.0f, 0.3f);
+    drawCaps (g, (ancha ? " " + tr ("Laboratorio creativo") + U (" · v") : U (" · v")) + escoita::Actualizacions::currentVersion(), r.withTrimmedLeft (we + 3.0f), juce::Justification::centredLeft, 8.0f, 0.3f);
     if (ancha) drawCaps (g, U ("42°14′N 8°43′W"), r, juce::Justification::centredRight, 8.0f, 0.3f);
     if (modelo.mensaxe.isNotEmpty() && ! novaVersion.isVisible())
     {
@@ -966,5 +1050,34 @@ void Principal::paint (juce::Graphics& g)
                           (ancha ? r.reduced (290.0f, 0.0f) : r.withTrimmedLeft (150.0f)).toNearestInt(),
                           ancha ? juce::Justification::centred : juce::Justification::centredRight, 1, 0.9f);
     }
+}
+// ==================================================================== teclado e paneis
+void Principal::globalFocusChanged (juce::Component* c)
+{
+    // ao chegar co Tab a unha tecla dunha tarxeta que non se ve, a lista desprázase ata ela
+    if (c == nullptr || ! lista.isParentOf (c)) return;
+    const auto r = lista.getLocalArea (c, c->getLocalBounds()).expanded (0, 16);
+    const auto v = vista.getViewArea();
+    if (r.getY() < v.getY()) vista.setViewPosition (0, r.getY());
+    else if (r.getBottom() > v.getBottom()) vista.setViewPosition (0, r.getBottom() - v.getHeight());
+}
+
+void Principal::escena (const juce::String& e)
+{
+    const Produto* p = nullptr;
+    for (auto& x : modelo.produtos())
+        if (x.ultima && (p == nullptr || modelo.situacion (x).estado() == Estado::actualizacion)) p = &x;
+    if (e == "notas" && p != nullptr)
+    {
+        paneis::notas (modelo, this, *p);
+        if (p->ultima->notas.isEmpty())
+            modal.porTexto (textos::markdownLexible (U ("## Novidades\n- Exemplo: as notas chegan de GitHub (o texto da versión ou NOTAS-VERSION.md).\n- **Máis** cousas.")));
+    }
+    else if (e == "daw")
+        paneis::avisoDaw (modelo, this, { "Ableton Live" }, [] {});
+    else if (e == "xestor")
+        paneis::xestorNovo (modelo, this);
+    else if (e == "atallos")
+        paneis::atallos (this);
 }
 } // namespace vistas

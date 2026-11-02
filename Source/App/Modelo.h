@@ -4,7 +4,7 @@
 
 // O estado da xanela. A lóxica está no núcleo; isto só a chama nun fío aparte e garda o resultado.
 // Avisa á interface (ChangeBroadcaster) cando cambia algo.
-class Modelo : public juce::ChangeBroadcaster
+class Modelo : public juce::ChangeBroadcaster, private juce::Timer
 {
 public:
     Modelo();
@@ -48,12 +48,45 @@ public:
     void actualizarTodo();
     void desinstalarOrfo (const xestor::Instalado&);
 
+    // ---------------------------------------------------------------- volver atrás, notas, presets
+    std::vector<xestor::Version> copiasDe (const xestor::Produto&) const;   // as gardadas, sen a instalada
+    void volverA (const xestor::Produto&, const xestor::Version&);
+    // as notas da versión publicada (do texto da versión ou do NOTAS-VERSION.md); chámase no fío principal
+    void pedirNotas (const xestor::Produto&, std::function<void (const juce::String&)>);
+    juce::Array<juce::File> cartafolesPresets (const xestor::Produto&) const;
+    void copiaPresets (const xestor::Produto&);
+    void abrirManual (const xestor::Produto&);
+
+    // ---------------------------------------------------------------- os DAW abertos
+    juce::StringArray dawsAgardados;   // agardando a que se pechen (para facer o pendente)
+    void agardarDaw (const juce::StringArray& daws, std::function<void()>);
+    void deixarDeAgardar();
+    juce::String lembranza;            // «volve escanear os plugins no DAW» (a faixa de arriba)
+
+    // ---------------------------------------------------------------- o propio xestor
+    std::optional<xestor::Lanzamento> xestorNovo;   // a versión nova do xestor, se a hai
+    double progresoXestor = -1.0;                   // ≥ 0: descargando
+    void actualizarXestor();                        // descarga, substitúe e reinicia
+    std::function<void()> sair;                     // a app: pechar (para reiniciar)
+
+    // ---------------------------------------------------------------- axustes e informe
+    void cambiarIdioma (std::optional<xestor::Idioma>);   // nullopt: o do sistema
+    void cambiarBandeja (bool);
+    void cambiarCopiaPresets (bool);
+    std::function<void()> alCambiarIdioma, alCambiarBandeja;
+    juce::StringArray chavesPorActualizar() const;   // «Barullo FM 0.5.1» (e o propio xestor)
+    void copiarInforme();
+    xestor::DatosInforme datosInforme() const;
+
     // a captura dun estado concreto (sen rede, traballando...), para revisar o deseño
     void escena (const juce::String&);
 
 private:
     void rematar (const xestor::Produto&, const xestor::Informe&);
     void avisar() { sendChangeMessage(); }
+    void timerCallback() override;   // agardando a que se peche o DAW
+    std::vector<std::function<void()>> pendentes;
+    xestor::Instalador instalador (const xestor::Rutas&);
     void noFioPrincipal (std::function<void()>);
 
 public:
@@ -71,6 +104,7 @@ private:
     xestor::LixoDoSistema lixo;
     xestor::ElevadorSistema elevador;
     xestor::Rexistro rexistro { xestor::Rexistro::estandar() };
+    xestor::Copias copias { xestor::Copias::estandar() };
     juce::ThreadPool fios { juce::ThreadPoolOptions{}.withNumberOfThreads (1) };    // un traballo de cada vez
     juce::ThreadPool carga { juce::ThreadPoolOptions{}.withNumberOfThreads (1) };
     juce::CriticalSection bloqueo;

@@ -77,7 +77,9 @@ set(APP_SOURCES
   Source/App/Main.cpp
   Source/App/Aspecto.cpp
   Source/App/Modelo.cpp
-  Source/App/Vistas.cpp)
+  Source/App/Vistas.cpp
+  Source/App/Paneis.cpp
+  Source/App/Bandeja.cpp)
 
 set(XESTOR_DEFS
   JUCE_WEB_BROWSER=0
@@ -103,6 +105,7 @@ target_link_libraries(BarulloXestor
   PRIVATE
     XestorFontes
     juce::juce_gui_basics
+    juce::juce_gui_extra
     juce::juce_cryptography
   PUBLIC
     juce::juce_recommended_config_flags

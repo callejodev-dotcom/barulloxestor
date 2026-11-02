@@ -1,6 +1,7 @@
 #pragma once
 #include "Aspecto.h"
 #include "Modelo.h"
+#include "Paneis.h"
 #include <escoita_nucleo/escoita_nucleo.h>
 
 // A xanela: a cabeceira (a placa, o visor do resumo, os formatos e «Actualizar todo»), a lista
@@ -26,6 +27,7 @@ private:
     void menu();
     void confirmarDesinstalar();
     juce::Rectangle<int> zonaMiniatura() const;
+    bool sobreVersion (juce::Point<int>) const;
     void paintMiniatura (juce::Graphics&, juce::Rectangle<float>);
     void paintSerie (juce::Graphics&, juce::Rectangle<float>);
 
@@ -59,6 +61,7 @@ public:
     void actualizar();
     void colocar (int ancho);   // reparte as tarxetas e cambia o alto
     void paint (juce::Graphics&) override;
+    juce::String textoFaixa() const;   // o aviso de arriba (baleiro: non hai)
 
 private:
     Modelo& modelo;
@@ -94,7 +97,7 @@ private:
 };
 
 // ------------------------------------------------------------------ a xanela enteira
-class Principal : public juce::Component, private juce::ChangeListener, private juce::Timer
+class Principal : public juce::Component, private juce::ChangeListener, private juce::Timer, private juce::FocusChangeListener
 {
 public:
     explicit Principal (Modelo&);
@@ -104,12 +107,14 @@ public:
     bool keyPressed (const juce::KeyPress&) override;
     int altoCompleto (int ancho);   // o alto para que se vexa toda a lista (captura --completa)
     void abrirVisor (const xestor::Produto& p, int i) { visor.abrir (p, i); }
+    void escena (const juce::String&);   // os paneis, para as capturas
 
     static constexpr int anchoInicial = 1040, altoInicial = 760;
 
 private:
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
+    void globalFocusChanged (juce::Component*) override;   // co teclado: que se vexa a tecla co foco
     void actualizar();
     void paintCabeceira (juce::Graphics&);
     void paintBaleiro (juce::Graphics&);
@@ -120,11 +125,11 @@ private:
     juce::TooltipWindow tooltips { this, 600 };
     std::vector<std::unique_ptr<juce::TextButton>> formatoBtn;
     std::vector<xestor::Formato> formatos;
-    juce::TextButton refrescar, actualizarTodo, volverProbar, novaVersion;
-    std::unique_ptr<juce::SharedResourcePointer<escoita::Actualizacions>> versions;   // o aviso das versións do propio xestor
+    juce::TextButton refrescar, actualizarTodo, volverProbar, novaVersion, xestorBtn;
     juce::Viewport vista;
     Lista lista;
     Visor visor;
+    paneis::Modal modal;
     juce::Rectangle<int> cabeceira, placa, resumo, zonaFormatos, corpo;
     float pulso = 0.0f;
 };
