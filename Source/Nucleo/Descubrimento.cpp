@@ -1,4 +1,5 @@
 #include "Descubrimento.h"
+#include <thread>
 #include "Escaner.h"
 
 namespace xestor
@@ -87,6 +88,20 @@ Catalogo Descubridor::descubrir (bool forzar)
     Catalogo c;
     if (github != nullptr)
     {
+        // o vixía: se pasa o tempo máximo, cancela o que estea pendente (e o que veña)
+        juce::WaitableEvent rematou (true);
+        std::atomic<bool> esgotado { false };
+        auto canc = github->cancelacion;
+        const int limite = limiteMs;
+        std::thread vixia ([&rematou, &esgotado, canc, limite]
+        {
+            if (! rematou.wait (limite)) { esgotado = true; canc->cancelar(); }
+        });
+        struct AoSair
+        {
+            juce::WaitableEvent& e; std::thread& t;
+            ~AoSair() { e.signal(); if (t.joinable()) t.join(); }
+        } aoSair { rematou, vixia };
         try
         {
             std::vector<RepoInfo> repos;
@@ -147,6 +162,7 @@ Catalogo Descubridor::descubrir (bool forzar)
             c.avisos.add ("Non se puido preguntar a GitHub: " + e.texto());
             c.senRede = true;
         }
+        c.tempoEsgotado = esgotado.load();
     }
 
     // os repositorios locais

@@ -35,6 +35,7 @@ struct Catalogo
     juce::StringArray avisos;
     juce::Time data = juce::Time::getCurrentTime();
     bool senRede = false;   // non se puido falar con GitHub nin había nada gardado
+    bool tempoEsgotado = false;   // GitHub non respondeu no tempo máximo
 
     const Produto* buscar (const juce::String& consulta) const;
 };
@@ -47,6 +48,8 @@ class Descubridor
 public:
     Descubridor (GitHub* gh, Axustes a) : github (gh), axustes (std::move (a)) {}
     Catalogo descubrir (bool forzar = false);
+    // se GitHub non responde en todo isto, cancélase o pendente e vólvese co que haxa (ou cun erro)
+    int limiteMs = 30000;
 
     // os subcartafoles con packaging/produto.env
     static std::vector<Produto> locais (const juce::Array<juce::File>& cartafoles);

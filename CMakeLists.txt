@@ -72,7 +72,7 @@ set(NUCLEO_SOURCES
   Source/Nucleo/Traducions.cpp
   Source/App/CLI.cpp)
 if(APPLE)
-  list(APPEND NUCLEO_SOURCES Source/Nucleo/Papeleira_mac.mm)
+  list(APPEND NUCLEO_SOURCES Source/Nucleo/Papeleira_mac.mm Source/Nucleo/Rede_mac.mm)
 endif()
 
 set(APP_SOURCES

@@ -61,6 +61,12 @@ Resposta GitHub::pedir (const juce::String& url, bool forzar)
     const auto idade = juce::Time::getCurrentTime() - juce::Time ((juce::int64) vello["data"]);
     if (hai && (soCache || (! forzar && idade < vixencia))) return deCache();
     if (soCache) throw ErroGitHub ("sen rede e sen nada gardado de " + url.toStdString());
+    const auto canc = cancelacion;   // (por se alguén a cambia mentres)
+    if (canc->cancelado())
+    {
+        if (hai) { cacheVella = true; return deCache(); }
+        throw ErroGitHub (juce::String (juce::CharPointer_UTF8 ("GitHub non respondeu a tempo")).toStdString());
+    }
 
     juce::StringPairArray cab;
     const bool api = url.startsWith ("https://api.github.com/");
@@ -72,7 +78,7 @@ Resposta GitHub::pedir (const juce::String& url, bool forzar)
     }
     if (hai && vello["etag"].toString().isNotEmpty()) cab.set ("If-None-Match", vello["etag"].toString());
 
-    auto r = transporte.pedir (url, cab);
+    auto r = transporte.pedirCancelable (url, cab, *canc);
     if (api)
     {
         const auto q = r.cabeceiras["x-ratelimit-remaining"];
@@ -108,6 +114,8 @@ Resposta GitHub::pedir (const juce::String& url, bool forzar)
             if (hai) { cacheVella = true; return deCache(); }
             if (r.estado == 403 || r.estado == 429)
                 throw ErroGitHub (juce::String (juce::CharPointer_UTF8 ("GitHub di que xa se lle preguntou de máis; volve probar dentro dun pouco.")).toStdString());
+            if (r.estado == 0 && canc->cancelado())
+                throw ErroGitHub (juce::String (juce::CharPointer_UTF8 ("GitHub non respondeu a tempo")).toStdString());
             if (r.estado == 0) throw ErroGitHub (juce::String (juce::CharPointer_UTF8 ("Sen conexión con GitHub")).toStdString());
             throw ErroGitHub (("GitHub respondeu " + juce::String (r.estado) + " a " + url).toStdString());
     }

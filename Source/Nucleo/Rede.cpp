@@ -3,6 +3,7 @@
 
 namespace xestor
 {
+#if ! JUCE_MAC
 static juce::String cabeceirasTexto (const juce::StringPairArray& c)
 {
     juce::String r;
@@ -10,12 +11,23 @@ static juce::String cabeceirasTexto (const juce::StringPairArray& c)
         r << c.getAllKeys()[i] << ": " << c.getAllValues()[i] << "\r\n";
     return r;
 }
+#endif
 
 Resposta TransporteHttp::pedir (const juce::String& url, const juce::StringPairArray& cabeceiras)
 {
-    Resposta r;
+    const Cancelacion nunca;
+    return pedirCancelable (url, cabeceiras, nunca);
+}
+
+Resposta TransporteHttp::pedirCancelable (const juce::String& url, const juce::StringPairArray& cabeceiras, const Cancelacion& cancelacion)
+{
     auto c = cabeceiras;
     c.set ("User-Agent", "BarulloXestor");
+   #if JUCE_MAC
+    return redeMac::pedir (url, c, cancelacion, limitePedidoMs);
+   #else
+    Resposta r;
+    if (cancelacion.cancelado()) { r.erro = U ("cancelado"); return r; }
     auto opts = juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
                     .withExtraHeaders (cabeceirasTexto (c))
                     .withConnectionTimeoutMs (20000)
@@ -28,8 +40,24 @@ Resposta TransporteHttp::pedir (const juce::String& url, const juce::StringPairA
         if (r.estado == 0) r.erro = U ("sen conexión");
         return r;
     }
-    s->readIntoMemoryBlock (r.corpo);
+    // o corpo a anacos, mirando se se cancelou e o tempo máximo
+    const auto inicio = juce::Time::getMillisecondCounter();
+    juce::HeapBlock<char> buf (1 << 15);
+    for (;;)
+    {
+        if (cancelacion.cancelado() || juce::Time::getMillisecondCounter() - inicio > (juce::uint32) limitePedidoMs)
+        {
+            r.estado = 0;
+            r.corpo.reset();
+            r.erro = cancelacion.cancelado() ? U ("cancelado") : U ("GitHub non respondeu a tempo");
+            return r;
+        }
+        const int n = s->read (buf.get(), 1 << 15);
+        if (n <= 0) break;
+        r.corpo.append (buf.get(), (size_t) n);
+    }
     return r;
+   #endif
 }
 
 juce::Result TransporteHttp::descargar (const juce::String& url, const juce::File& destino, std::function<bool (double)> progreso)
@@ -40,6 +68,9 @@ juce::Result TransporteHttp::descargar (const juce::String& url, const juce::Fil
         if (res.wasOk() && progreso) progreso (1.0);
         return res;
     }
+   #if JUCE_MAC
+    return redeMac::descargar (url, destino, std::move (progreso), limiteInactivoMs);
+   #else
     int estado = 0;
     juce::StringPairArray cab;
     auto opts = juce::URL::InputStreamOptions (juce::URL::ParameterHandling::inAddress)
@@ -63,13 +94,14 @@ juce::Result TransporteHttp::descargar (const juce::String& url, const juce::Fil
         if (n <= 0) break;
         out.write (buf.get(), (size_t) n);
         levo += n;
-        if (progreso && total > 0 && ! progreso ((double) levo / (double) total))
+        if (progreso && ! progreso (total > 0 ? (double) levo / (double) total : 0.0))
             return juce::Result::fail ("Descarga cancelada");
     }
     out.flush();
     if (total > 0 && levo != total) return juce::Result::fail ("A descarga quedou a medias");
     if (progreso) progreso (1.0);
     return juce::Result::ok();
+   #endif
 }
 
 juce::Result copiarLocal (const juce::String& url, const juce::File& destino)

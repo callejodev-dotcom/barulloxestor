@@ -2,6 +2,7 @@
 #include "Rede.h"
 #include <atomic>
 #include <stdexcept>
+#include <memory>
 
 namespace xestor
 {
@@ -57,6 +58,10 @@ public:
 
     static std::optional<Lanzamento> lanzamento (const juce::var& o);
     void baleirarCache() { cache.deleteRecursively(); }
+
+    // deixar de agardar: o pendente volve xa (co gardado, se o hai) e o que veña despois non sae á rede
+    std::shared_ptr<Cancelacion> cancelacion = std::make_shared<Cancelacion>();
+    void cancelar() { cancelacion->cancelar(); }
 
     int restantes() const { return restantesAPI.load(); }   // −1: non se sabe
     bool usouCacheVella() const { return cacheVella.load(); }

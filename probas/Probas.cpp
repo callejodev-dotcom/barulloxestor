@@ -192,6 +192,27 @@ struct GitHubFalso : Transporte
     }
 };
 
+// un GitHub que nunca contesta (coma unha conexión colgada): só volve se se cancela
+struct GitHubMudo : Transporte
+{
+    std::atomic<int> agardando { 0 };
+    Resposta pedir (const juce::String&, const juce::StringPairArray&) override
+    {
+        juce::WaitableEvent nunca;
+        nunca.wait (-1);
+        return {};
+    }
+    Resposta pedirCancelable (const juce::String&, const juce::StringPairArray&, const Cancelacion& c) override
+    {
+        ++agardando;
+        c.agardar (-1);
+        Resposta r;
+        r.erro = "cancelado";
+        return r;
+    }
+    juce::Result descargar (const juce::String&, const juce::File&, std::function<bool (double)>) override { return juce::Result::fail ("non"); }
+};
+
 juce::String envSinxelo (const juce::String& nome, const juce::String& au, const juce::String& extra = {})
 {
     return "NOME=\"" + nome + "\"\nCURTO=\"" + nome.removeCharacters (" ") + "\"\nDESCRICION=\"Un plugin de proba\" # comentario\nAU=\"" + au + "\"\n" + extra;
@@ -883,6 +904,28 @@ int main (int argc, char** argv)
                && inf.contains ("[DUPLICADA]") && inf.contains ("[firma: ad hoc]") && inf.contains (U ("copias para volver atrás: 0.5.0"))
                && inf.contains ("DAW abertos: REAPER") && inf.contains (U ("con conexión")) && ! inf.contains (U ("Ã")) && inf.contains ("Copias duplicadas (usuario e sistema): 2")
                && diagnostico::curta (juce::File::getSpecialLocation (juce::File::userHomeDirectory).getChildFile ("x/y")) == "~" + juce::File::getSeparatorString() + "x" + juce::File::getSeparatorString() + "y");
+    }
+
+    {
+        // GitHub non contesta: ao pasar o tempo máximo cancélase todo e vólvese cun erro (sen colgar)
+        Temporal t;
+        GitHubMudo mudo;
+        GitHub gh ("callejodev-dotcom", t.sub ("cache"), mudo);
+        Axustes ax;
+        ax.cartafolesLocais.clear();
+        Descubridor d (&gh, ax);
+        d.limiteMs = 400;
+        const auto antes = juce::Time::getMillisecondCounter();
+        const auto c = d.descubrir (true);
+        const auto tardou = juce::Time::getMillisecondCounter() - antes;
+        proba ("descubrir: GitHub mudo → tempo esgotado en vez de agardar para sempre",
+               c.tempoEsgotado && c.senRede && c.produtos.empty() && tardou < 5000 && mudo.agardando.load() >= 1
+               && c.avisos.joinIntoString (" ").contains ("non respondeu a tempo"));
+        // e o que se pida despois de cancelar xa non sae á rede
+        const int pedidos = mudo.agardando.load();
+        bool erro = false;
+        try { gh.pedir ("https://api.github.com/x", true); } catch (const ErroGitHub&) { erro = true; }
+        proba ("rede: despois de cancelar, os pedidos fallan xa (sen saír)", erro && mudo.agardando.load() == pedidos);
     }
 
     std::printf ("\n%d probas, %d fallos\n", total, fallos);
