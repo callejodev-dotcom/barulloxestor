@@ -55,6 +55,38 @@ nin `~/Documents`, que en Mac protexe TCC, e «Volver poñer» funciona).
 
 Se se di que non, a copia queda onde estaba e avísase.
 
+## Antes e despois de cambiar os plugins
+
+- **DAW aberto**: antes de instalar, actualizar, volver atrás ou desinstalar mírase se hai un DAW
+  en marcha (Ableton Live, Logic Pro, REAPER, Bitwig, Cubase, Nuendo, FL Studio, Studio One,
+  Pro Tools, GarageBand, Ardour, Reason…; `ps` en Mac e Linux, `tasklist` en Windows). Se o hai,
+  avísase: **agardar** a que se peche (faise só entón), **continuar igual** ou cancelar. Despois
+  dun cambio, a faixa de arriba lembra volver escanear os plugins no DAW.
+- **Volver atrás**: ao actualizar, a versión de antes cópiase en `<datos>/copias/<Curto>/<versión>/`
+  (as dúas máis novas de cada plugin) antes de ir ao Lixo; o menú ••• ofrece «Volver á 0.5.0»,
+  sen rede.
+- **Notas da versión**: o texto da versión en GitHub (ou o `NOTAS-VERSION.md` da etiqueta), nun
+  panel coma o das capturas, desde o menú ••• ou cun clic no visor «0.5.0 → 0.5.1».
+- **Manual e presets**: «Abrir o manual» (`docs/MANUAL.md`, `LEEME.md` ou `README.md` en GitHub,
+  ou no disco), o cartafol dos presets (`Documentos/<Plugin>/Presets`) e unha copia en .zip
+  (`Documentos/Barullo Xestor/Copias dos presets`); opcional, antes de cada actualización.
+
+## O propio xestor
+
+- **Versión nova**: mira `callejodev-dotcom/barulloxestor`; «Hai Barullo Xestor X» no pé abre as
+  notas e «Actualizar e reiniciar»: descarga (comprobando tamaño e SHA-256), en Mac e Linux pon a
+  nova no sitio da de agora (a vella, ao Lixo) e en Windows abre o instalador en silencio; despois
+  ábrese a nova.
+- **Comprobar cada día**: no menú ••• da cabeceira, unha icona na barra de menús (Mac) ou na
+  bandeja (Windows, Linux) que pregunta a GitHub unha vez ao día e avisa cunha notificación
+  das versións novas (unha vez cada unha). Con ela, pechar a xanela deixa a app alí.
+- **Idioma**: galego, castelán ou inglés (por defecto, o do sistema: gl → galego, es →
+  castelán, se non inglés). A liña de ordes e o informe van en galego.
+- **Copiar informe**: o SO, as versións do xestor e de cada plugin, as rutas, as copias
+  duplicadas e (en Mac) a firma de cada bundle, para pegar ao pedir axuda (tamén `--informe`).
+- **Teclado**: Tab / Maiús+Tab percorren as teclas (a lista desprázase soa), Intro preme, Esc
+  pecha paneis, menús e o visor; Cmd/Ctrl+R ou F5 comproba.
+
 ## Liña de ordes
 
 ```sh
@@ -63,13 +95,14 @@ B="$HOME/Applications/Barullo Xestor.app/Contents/MacOS/Barullo Xestor"   # Wind
 "$B" --instalar tune --dir /tmp/proba --papeleira /tmp/lixo
 "$B" --actualizar fm                # e a copia vella do sistema, ao Lixo (pide o permiso)
 "$B" --actualizar-todo
-"$B" --captura /tmp/x.png [--escena sen-rede|baleiro|traballando|ao-dia|aberta|captura] [--completa]
+"$B" --captura /tmp/x.png [--escena sen-rede|baleiro|traballando|ao-dia|aberta|captura|notas|daw|xestor|atallos] [--idioma gl|es|en] [--completa]
+"$B" --informe                      # o informe para pedir axuda
 "$B" --axuda
 ```
 
 Axustes opcionais en `axustes.json` (Mac `~/Library/Application Support/Barullo Xestor`, Windows
 `%APPDATA%\Barullo Xestor`, Linux `~/.config/Barullo Xestor`): `formatos`, `cartafolesLocais`,
-`reposExtra`, `reposOcultos`, `propietario`, `usarGh`.
+`reposExtra`, `reposOcultos`, `propietario`, `usarGh`, `idioma`, `bandeja`, `copiaPresets`.
 
 ## Compilar e probar
 
