@@ -241,10 +241,17 @@ void paintProgreso (juce::Graphics& g, Modelo& modelo, const Produto& p, juce::R
         }
     }
     const auto fase = maiuscula1 (tr (modelo.fases.count (p.id()) ? modelo.fases.at (p.id()) : juce::String ("traballando")));
+    auto zt = barra.reduced (12.0f, 0.0f);
+    if (v < 0.0)
+    {
+        // sen saber canto queda (pedindo permiso, preparando): o mando pequeno xirando
+        paintCargador (g, zt.removeFromLeft (barra.getHeight() - 6.0f).withSizeKeepingCentre (barra.getHeight() - 6.0f, barra.getHeight() - 6.0f), tempoCargador());
+        zt.removeFromLeft (8.0f);
+    }
     g.setColour (col::crema);
     g.setFont (semi (css (12.0f)));
     g.drawText (fase + (v >= 0.0 && v < 1.0 ? U (" · ") + juce::String (juce::roundToInt (v * 100.0)) + " %" : juce::String (U ("…"))),
-                barra.reduced (12.0f, 0.0f), juce::Justification::centredLeft, true);
+                zt, juce::Justification::centredLeft, true);
 }
 
 // un degradado da cor do plugin co nome grande (cando non hai captura)
@@ -1288,6 +1295,8 @@ juce::String Lista::textoFaixa() const
     if (! modelo.dawsAgardados.isEmpty())
         return tr ("Agardando a que se peche %1: faise só cando o peches. (Esc ou a × para non agardar)", modelo.dawsAgardados.joinIntoString (", "));
     if (modelo.lembranza.isNotEmpty()) return modelo.lembranza;
+    if (modelo.tempoEsgotado() && ! modelo.produtos().empty())
+        return tr ("GitHub non respondeu a tempo: amósase o último que se soubo. Volve tentalo co ↻.");
     if (modelo.senRede() && ! modelo.produtos().empty())
         return tr ("Sen conexión con GitHub: amósase o último que se soubo. As versións poden non ser as últimas.");
     return {};
@@ -2011,7 +2020,7 @@ Principal::Principal (Modelo& m)
     axustes.setExplicitFocusOrder (orde++);
     for (auto* b : { &lupa, &refrescar, &axustes }) addAndMakeVisible (b);
     volverProbar.getProperties().set ("primaria", true);
-    volverProbar.setButtonText (tr ("Volver probar"));
+    volverProbar.setButtonText (tr ("Tentar de novo"));
     volverProbar.onClick = [this] { modelo.cargar (true); };
     addChildComponent (volverProbar);
 
@@ -2084,6 +2093,9 @@ void Principal::actualizar()
         formatoBtn[i]->setToggleState (on, juce::dontSendNotification);
     }
     refrescar.setEnabled (! modelo.cargando);
+    if (modelo.cargando) refrescar.getProperties().set ("cargando", true);
+    else refrescar.getProperties().remove ("cargando");
+    refrescar.setTooltip (modelo.cargando ? tr ("Comprobando en GitHub…") : tr ("Preguntar agora a GitHub polas últimas versións (Cmd/Ctrl + R)."));
     volverProbar.setVisible (baleiro() && ! modelo.cargando);
     vista.setVisible (! baleiro());
     for (auto& b : pestanaBtn) b->setVisible (! baleiro());
@@ -2107,6 +2119,11 @@ void Principal::timerCallback()
     // o LED do pé respira mentres se comproba ou se traballa
     pulso += dt * 2.4f;
     if (modelo.cargando || ! modelo.traballos.empty()) repaint (pe);
+    if (modelo.cargando)
+    {
+        refrescar.repaint();
+        if (baleiro()) repaint (corpo);
+    }
     // a versión nova do propio xestor (e o progreso da descarga)
     {
         juce::String t;
@@ -2203,7 +2220,7 @@ void Principal::resized()
     corpo = { 0, 0, W, pe.getY() };
     vista.setBounds (corpo);
     lista.colocar (corpo.getWidth() - (lista.getHeight() > corpo.getHeight() ? vista.getScrollBarThickness() : 0));
-    volverProbar.setBounds (W / 2 - 90, corpo.getCentreY() + 60, 180, 40);
+    volverProbar.setBounds (W / 2 - 100, corpo.getCentreY() + 116, 200, 44);
     ficha.setBounds (getLocalBounds());
     modal.setBounds (getLocalBounds());
 }
@@ -2273,12 +2290,19 @@ void Principal::paintPe (juce::Graphics& g)
 
 void Principal::paintBaleiro (juce::Graphics& g)
 {
-    auto r = juce::Rectangle<float> (0.0f, 0.0f, juce::jmin (520.0f, (float) getWidth() - 60.0f), 170.0f).withCentre (corpo.getCentre().toFloat().translated (0.0f, -30.0f));
+    // o mando grande no medio (xirando mentres se pregunta) e debaixo que pasa
+    const auto ctr = corpo.getCentre().toFloat().translated (0.0f, -40.0f);
+    const auto zm = juce::Rectangle<float> (170.0f, 170.0f).withCentre (ctr.translated (0.0f, -50.0f));
     juce::String t, d;
     if (modelo.cargando)
     {
-        t = tr ("Preguntando a GitHub…");
+        t = tr ("Comprobando en GitHub…");
         d = tr ("Buscando os plugins de Escoita: os repositorios con packaging/produto.env e a súa última versión.");
+    }
+    else if (modelo.tempoEsgotado())
+    {
+        t = tr ("GitHub non responde");
+        d = tr ("Non contestou en 30 segundos. Mira a conexión e volve tentalo.");
     }
     else if (modelo.senRede())
     {
@@ -2290,18 +2314,22 @@ void Principal::paintBaleiro (juce::Graphics& g)
         t = tr ("Ningún plugin");
         d = tr ("Non se atopou ningún plugin de Escoita. Se acabas de publicar un, volve probar nun intre.");
     }
-    // o mando da familia, grande e tenue, e debaixo o texto
     {
+        // un halo tenue detrás
+        juce::ColourGradient h (col::laranxa.withAlpha (0.10f), zm.getCentreX(), zm.getCentreY(), col::laranxa.withAlpha (0.0f), zm.getCentreX() + 200.0f, zm.getCentreY(), true);
+        g.setGradientFill (h);
+        g.fillEllipse (zm.expanded (110.0f));
         juce::Graphics::ScopedSaveState ss (g);
-        g.setOpacity (modelo.cargando ? 0.55f + 0.25f * std::sin (pulso * 2.0f) : 0.6f);
-        paintMandoFamilia (g, juce::Rectangle<float> (r.getCentreX() - 70.0f, r.getY() - 90.0f, 140.0f, 140.0f), false);
+        if (! modelo.cargando) g.setOpacity (0.75f);
+        paintCargador (g, zm, tempoCargador(), modelo.cargando);
     }
+    const auto r = juce::Rectangle<float> (juce::jmin (560.0f, (float) getWidth() - 40.0f), 120.0f).withCentre ({ ctr.x, zm.getBottom() + 74.0f });
     g.setColour (col::crema);
-    g.setFont (cond (css (20.0f)));
-    g.drawText (t, r.withTrimmedTop (64.0f).withHeight (30.0f), juce::Justification::centred, false);
+    g.setFont (cond (css (22.0f)));
+    g.drawText (t, r.withHeight (32.0f), juce::Justification::centred, false);
     g.setColour (col::crema2);
     g.setFont (body (css (13.5f)));
-    g.drawFittedText (d, r.reduced (20.0f, 0.0f).withTrimmedTop (100.0f).withHeight (44.0f).toNearestInt(), juce::Justification::centredTop, 2, 1.0f);
+    g.drawFittedText (d, r.withTrimmedTop (42.0f).withHeight (44.0f).toNearestInt(), juce::Justification::centredTop, 2, 1.0f);
 }
 
 void Principal::paint (juce::Graphics& g)

@@ -461,6 +461,62 @@ void paintMandoFamilia (juce::Graphics& g, juce::Rectangle<float> r, bool placa,
     g.strokePath (ag, juce::PathStrokeType (26.0f * k, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
+double tempoCargador() { return juce::Time::getMillisecondCounterHiRes() * 0.001; }
+
+void paintCargador (juce::Graphics& g, juce::Rectangle<float> r, double t, bool movese)
+{
+    // as medidas do mando da icona (en 1024), ao cadrado máis grande que colla
+    const float lado = juce::jmin (r.getWidth(), r.getHeight());
+    const float k = lado / 600.0f;   // o arco vai de 237 a 787: 600 unidades abondan
+    const auto c = r.getCentre();
+    const float ra = 275.0f * k, kr = 200.0f * k;
+    const float a0 = juce::MathConstants<float>::pi * 1.25f;
+    const float seg = 134.0f / 275.0f, paso = 162.0f / 275.0f;
+    const float total = 7.0f * paso + seg;
+    // a agulla: vai e vén cun ir e vir suave (coma unha man), e para un chisco nos extremos
+    const double ciclo = 3.2;
+    const float fase = (float) std::fmod (t, ciclo) / (float) ciclo;
+    const float pos = movese ? 0.5f - 0.5f * std::cos (fase * juce::MathConstants<float>::twoPi) : 0.5f;   // quieto: arriba, coma a icona
+    const float ang = a0 + pos * total;
+    const auto& cores = coresFamilia();
+    const float grosor = juce::jmax (1.6f, 40.0f * k);
+    for (size_t i = 0; i < cores.size(); ++i)
+    {
+        const float s0 = a0 + (float) i * paso;
+        // canto está aceso: 0 antes da agulla, 1 cando a agulla xa pasou (cun bordo suave)
+        const float luz = movese ? juce::jlimit (0.0f, 1.0f, (ang - s0) / seg + 0.15f) : 1.0f;
+        juce::Path p;
+        p.addCentredArc (c.x, c.y, ra, ra, 0.0f, s0, s0 + seg, true);
+        const juce::PathStrokeType st (grosor, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+        g.setColour (cores[i].withAlpha (0.16f + 0.10f * (1.0f - luz)));
+        g.strokePath (p, st);
+        if (luz > 0.0f)
+        {
+            // o brillo e o segmento aceso
+            g.setColour (cores[i].withAlpha (0.16f * luz));
+            g.strokePath (p, juce::PathStrokeType (grosor * 2.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            g.setColour (cores[i].withAlpha (luz));
+            g.strokePath (p, st);
+        }
+    }
+    // o disco e a agulla
+    g.setColour (juce::Colour (0xff080b16).withAlpha (0.6f));
+    g.fillEllipse (c.x - kr, c.y - kr + 18.0f * k, kr * 2.0f, kr * 2.0f);
+    juce::ColourGradient disco (juce::Colour (0xff4a5578), c.x - kr * 0.24f, c.y - kr * 0.4f, juce::Colour (0xff151a2e), c.x + kr * 1.36f, c.y - kr * 0.4f, true);
+    disco.addColour (0.6, juce::Colour (0xff232a45));
+    g.setGradientFill (disco);
+    g.fillEllipse (c.x - kr, c.y - kr, kr * 2.0f, kr * 2.0f);
+    g.setColour (juce::Colour (0xff3a4468));
+    g.drawEllipse (c.x - kr, c.y - kr, kr * 2.0f, kr * 2.0f, juce::jmax (0.8f, 3.0f * k));
+    const float largo = 167.0f * k;
+    const juce::Point<float> punta (c.x + largo * std::sin (ang), c.y - largo * std::cos (ang));
+    juce::Path ag;
+    ag.startNewSubPath (c);
+    ag.lineTo (punta);
+    g.setColour (col::crema);
+    g.strokePath (ag, juce::PathStrokeType (juce::jmax (1.4f, 26.0f * k), juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
 juce::Image iconaApp()
 {
     static const juce::Image im = []
@@ -655,6 +711,7 @@ void Look::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool over, bo
     if (e == "icona")
     {
         const auto icona = b.getProperties()["icona"].toString();
+        if (b.getProperties().contains ("cargando")) { paintCargador (g, r.reduced (r.getHeight() * 0.2f), tempoCargador()); return; }
         if (icona == "refrescar") { paintRefrescar (g, r, c); return; }
         if (icona == "axustes") { paintEngrenaxe (g, r, c); return; }
         if (icona == "lupa") { paintLupa (g, r.translated (1.0f, 1.0f), c); return; }

@@ -650,6 +650,18 @@ const std::vector<Entrada>& taboa()
         { "← →: o destacado anterior ou o seguinte",
           "← →: el destacado anterior o el siguiente",
           "← →: previous or next featured plugin" },
+        { "GitHub non responde",
+          "GitHub no responde",
+          "GitHub is not responding" },
+        { "Non contestou en 30 segundos. Mira a conexión e volve tentalo.",
+          "No contestó en 30 segundos. Mira la conexión y vuelve a intentarlo.",
+          "No answer in 30 seconds. Check your connection and try again." },
+        { "Tentar de novo",
+          "Intentar de nuevo",
+          "Try again" },
+        { "GitHub non respondeu a tempo: amósase o último que se soubo. Volve tentalo co ↻.",
+          "GitHub no respondió a tiempo: se muestra lo último que se supo. Vuelve a intentarlo con ↻.",
+          "GitHub did not answer in time: showing the last known state. Try again with ↻." },
     };
     return t;
 }

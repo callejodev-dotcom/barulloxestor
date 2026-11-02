@@ -87,6 +87,11 @@ juce::Image reducir (const juce::Image&, int ancho);
 // O mando da familia: o arco de segmentos coas oito cores, o disco e a agulla. En «r» (cadrado)
 // como a icona de 1024 (coa placa); «monocromo»: só o mando, en negro (a barra de menús do Mac).
 void paintMandoFamilia (juce::Graphics&, juce::Rectangle<float> r, bool placa, bool monocromo = false);
+// O cargador: o mando da familia coma se alguén o xirase. A agulla vai e vén suave polo arco e os
+// segmentos acéndense ao seu paso (cun brillo), un tras outro. «t» en segundos; «movese» false: quieto.
+void paintCargador (juce::Graphics&, juce::Rectangle<float> r, double t, bool movese = true);
+// o «t» de agora (para animar): segundos desde que arrancou a app
+double tempoCargador();
 // a icona da app (Resources/Icona.png), sen o marxe transparente
 juce::Image iconaApp();
 

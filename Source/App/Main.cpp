@@ -126,7 +126,26 @@ int captura (const xestor::cli::Opcions& o)
     Modelo m;
     if (auto i = xestor::idiomaDeClave (o.idioma)) xestor::porIdioma (*i);   // só para esta captura
     if (o.formatos) m.axustes.formatos = *o.formatos;   // só para esta captura: non se garda
-    if (o.escena != "baleiro") m.cargarAgora (o.refrescar);
+    if (o.escena == "cargador-fotogramas")
+    {
+        // oito fotogramas do cargador nunha tira (para ver o movemento)
+        const int n = 8, lado = 220;
+        juce::Image tira (juce::Image::ARGB, (int) ((float) (n * lado) * o.escala), (int) ((float) lado * o.escala), true);
+        {
+            juce::Graphics g (tira);
+            g.addTransform (juce::AffineTransform::scale (o.escala));
+            g.fillAll (juce::Colour (0xff070a14));
+            for (int i = 0; i < n; ++i)
+                aspecto::paintCargador (g, juce::Rectangle<float> ((float) (i * lado), 0.0f, (float) lado, (float) lado).reduced (30.0f),
+                                        3.2 * (double) i / (double) n);
+        }
+        o.captura.deleteFile();
+        juce::FileOutputStream out (o.captura);
+        if (! out.openedOk() || ! juce::PNGImageFormat().writeImageToStream (tira, out)) return 1;
+        std::printf ("Captura: %s\n", o.captura.getFullPathName().toRawUTF8());
+        return 0;
+    }
+    if (o.escena != "baleiro" && o.escena != "cargando") m.cargarAgora (o.refrescar);
     m.escena (o.escena);
     vistas::Principal p (m);
     p.setSize (o.ancho, o.alto);
