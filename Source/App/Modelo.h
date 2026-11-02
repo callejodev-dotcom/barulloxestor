@@ -35,6 +35,9 @@ public:
     // ---------------------------------------------------------------- capturas
     juce::Image miniatura (const xestor::Produto&) const;      // a primeira captura (ou nada)
     juce::Image captura (const juce::String& url);              // unha enteira (da caché)
+    juce::Image capturaSeHai (const juce::String& url) const;   // só se xa está cargada
+    // unha enteira nun fío aparte (a ficha); «feito» chámase no fío principal
+    void pedirCaptura (const juce::String& url, std::function<void (juce::Image)> feito);
 
     // ---------------------------------------------------------------- accións
     void cargar (bool forzar = false);
@@ -80,9 +83,12 @@ public:
 
     // a captura dun estado concreto (sen rede, traballando...), para revisar o deseño
     void escena (const juce::String&);
+    // as notas xa, no mesmo fío (só para a captura, que non ten bucle de mensaxes)
+    juce::String notasXa (const xestor::Produto&);
 
 private:
     void rematar (const xestor::Produto&, const xestor::Informe&);
+    void finxirActualizacions();   // (escenas) Xuno, Xuntos e Ley cunha versión anterior; FM cunha copia vella
     void avisar() { sendChangeMessage(); }
     void timerCallback() override;   // agardando a que se peche o DAW
     std::vector<std::function<void()>> pendentes;

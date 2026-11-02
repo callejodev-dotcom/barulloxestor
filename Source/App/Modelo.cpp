@@ -82,6 +82,30 @@ juce::Image Modelo::captura (const juce::String& url)
     return im;
 }
 
+juce::Image Modelo::capturaSeHai (const juce::String& url) const
+{
+    auto i = capturas.find (url);
+    return i != capturas.end() ? i->second : juce::Image();
+}
+
+void Modelo::pedirCaptura (const juce::String& url, std::function<void (juce::Image)> feito)
+{
+    if (auto i = capturas.find (url); i != capturas.end()) { feito (i->second); return; }
+    juce::WeakReference<Modelo> w (this);
+    auto gh = github;
+    juce::Thread::launch ([w, gh, url, feito]
+    {
+        const auto m = gh->imaxe (url);
+        const auto im = juce::ImageFileFormat::loadFrom (m.getData(), m.getSize());
+        juce::MessageManager::callAsync ([wr = w, url, im, f = feito]
+        {
+            if (wr == nullptr) return;
+            wr->capturas[url] = im;
+            f (im);
+        });
+    });
+}
+
 // ================================================================ cargar
 static juce::String mensaxeDe (const Catalogo& c)
 {
@@ -398,6 +422,29 @@ void Modelo::escena (const juce::String& e)
             else if (! descarga && p.ultima) { traballos[p.id()] = 0.42; fases[p.id()] = "descargando"; descarga = true; mensaxe = tr ("%1: descargando…", p.nome); }
         }
     }
+    else if (e == "demo" || e == "ficha")
+    {
+        // coma na maqueta: tres actualizacións, unha copia vella e o primeiro descargando
+        finxirActualizacions();
+        if (e == "demo")
+            for (auto& p : produtos())
+                if (p.ultima && situacion (p).estado() == Estado::alDia)
+                {
+                    traballos[p.id()] = 0.62;
+                    fases[p.id()] = "descargando";
+                    mensaxe = tr ("%1: descargando…", p.nome);
+                    break;
+                }
+    }
+    else if (e == "sen-capturas")
+    {
+        // sen ningunha captura: as tarxetas co degradado da súa cor
+        miniaturas.clear();
+        if (catalogo)
+            for (auto& p : catalogo->produtos) p.capturas.clear();
+        reescanear();
+        finxirActualizacions();
+    }
     else if (e == "lembranza")
         lembranza = tr ("%1 está aberto: volve escanear os plugins (ou reinícialo) para que vexa o cambio.", "Ableton Live");
     else if (e == "agardando")
@@ -410,6 +457,40 @@ void Modelo::escena (const juce::String& e)
         xestorNovo = l;
         if (e == "xestor-descarga") progresoXestor = 0.37;
     }
+}
+
+void Modelo::finxirActualizacions()
+{
+    const juce::StringArray quen { "Barullo Xuno", "Barullo Xuntos", "Barullo Ley" };
+    for (auto& [id, s] : situacions)
+    {
+        if (! s.produto.ultima || ! s.produto.ultima->version() || s.instalados.empty()) continue;
+        auto vella = *s.produto.ultima->version();
+        vella.partes.resize (3, 0);
+        if (vella.partes[2] > 0) --vella.partes[2];
+        else if (vella.partes[1] > 0) { --vella.partes[1]; vella.partes[2] = 9; }
+        if (quen.contains (s.produto.nome))
+        {
+            for (auto& i : s.instalados) { i.version = vella; i.textoVersion = vella.texto(); }
+        }
+        else if (s.produto.nome == "Barullo FM" && ! rutas.sistema.empty())
+        {
+            Instalado i = s.instalados.front();
+            i.ubicacion = rutas.sistema.front();
+            i.ficheiro = i.ubicacion.ruta (i.plugin, i.formato);
+            i.version = vella;
+            i.textoVersion = vella.texto();
+            s.instalados.push_back (i);
+        }
+    }
+}
+
+juce::String Modelo::notasXa (const Produto& p)
+{
+    if (! p.ultima) return {};
+    if (p.ultima->notas.isNotEmpty() || p.repo.isEmpty()) return p.ultima->notas;
+    try { return github->notas (p.repo, *p.ultima); }
+    catch (...) { return {}; }
 }
 
 // ================================================================ volver atrás, notas, presets e manual
