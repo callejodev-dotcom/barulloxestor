@@ -43,8 +43,9 @@ else()
   FetchContent_MakeAvailable(escoita_nucleo)
 endif()
 
-# as tipografías da familia (Montserrat e Inter, licenza OFL)
+# as tipografías da familia (Montserrat e Inter, licenza OFL) e a icona (para a cabeceira)
 juce_add_binary_data(XestorFontes SOURCES
+  Resources/Icona.png
   Resources/Inter-Medium.ttf
   Resources/Montserrat-SemiBold.ttf
   Resources/Montserrat-Bold.ttf)

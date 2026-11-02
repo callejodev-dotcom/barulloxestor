@@ -23,6 +23,14 @@ juce::Colour acento (const juce::String& nome)
     return paleta[h % (sizeof (paleta) / sizeof (paleta[0]))];
 }
 
+const std::vector<juce::Colour>& coresFamilia()
+{
+    static const std::vector<juce::Colour> c {
+        juce::Colour (0xffe08b16), juce::Colour (0xffedba23), juce::Colour (0xff9dc6a0), juce::Colour (0xff6fc6c0),
+        juce::Colour (0xff8fb0e8), juce::Colour (0xffb59de0), juce::Colour (0xffe58fa6), juce::Colour (0xffe0735a) };
+    return c;
+}
+
 // ================================================================ tipografía
 // Montserrat (títulos e rótulos, en maiúsculas espaciadas coma na web de Escoita) e Inter
 // (texto corrido): as da familia Barullo. As dúas, licenza OFL.
@@ -168,6 +176,211 @@ void paintRefrescar (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour c
     g.fillPath (head);
 }
 
+
+void paintEngrenaxe (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour c)
+{
+    // unha roda dentada: oito dentes arredor dun anel
+    const auto ctr = r.getCentre();
+    const float ro = 7.6f, ri = 5.6f;
+    juce::Path p;
+    const int n = 8;
+    for (int i = 0; i < n * 4; ++i)
+    {
+        const float a = juce::MathConstants<float>::twoPi * ((float) i - 0.5f) / (float) (n * 4);
+        const bool fora = (i % 4) == 1 || (i % 4) == 2;
+        const float rr = fora ? ro : ri;
+        const juce::Point<float> pt (ctr.x + rr * std::sin (a), ctr.y - rr * std::cos (a));
+        if (i == 0) p.startNewSubPath (pt); else p.lineTo (pt);
+    }
+    p.closeSubPath();
+    p.addEllipse (ctr.x - 2.6f, ctr.y - 2.6f, 5.2f, 5.2f);
+    p.setUsingNonZeroWinding (false);
+    g.setColour (c);
+    g.fillPath (p);
+}
+
+void paintLupa (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour c)
+{
+    const auto ctr = r.getCentre().translated (-1.5f, -1.5f);
+    g.setColour (c);
+    g.drawEllipse (ctr.x - 5.0f, ctr.y - 5.0f, 10.0f, 10.0f, 1.6f);
+    g.drawLine (ctr.x + 3.7f, ctr.y + 3.7f, ctr.x + 7.5f, ctr.y + 7.5f, 1.8f);
+}
+
+void paintVisto (juce::Graphics& g, juce::Rectangle<float> r, juce::Colour c, float grosor)
+{
+    const auto ctr = r.getCentre();
+    const float s = juce::jmin (r.getWidth(), r.getHeight()) * 0.5f;
+    juce::Path p;
+    p.startNewSubPath (ctr.x - s * 0.55f, ctr.y + s * 0.02f);
+    p.lineTo (ctr.x - s * 0.15f, ctr.y + s * 0.42f);
+    p.lineTo (ctr.x + s * 0.6f, ctr.y - s * 0.4f);
+    g.setColour (c);
+    g.strokePath (p, juce::PathStrokeType (grosor, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+// ================================================================ o escaparate
+void paintFondo (juce::Graphics& g, juce::Rectangle<float> r)
+{
+    g.setColour (col::noite);
+    g.fillRect (r);
+    // un brillo elíptico: un degradado circular estirado
+    auto brillo = [&] (juce::Point<float> c, float rx, float ry, juce::Colour cor, float ata)
+    {
+        juce::Graphics::ScopedSaveState ss (g);
+        g.addTransform (juce::AffineTransform::scale (1.0f, ry / rx, c.x, c.y));
+        juce::ColourGradient gr (cor, c.x, c.y, cor.withAlpha (0.0f), c.x + rx, c.y, true);
+        gr.addColour (ata * 0.5, cor.withMultipliedAlpha (0.55f));
+        gr.addColour (ata, cor.withAlpha (0.0f));
+        g.setGradientFill (gr);
+        g.fillRect (juce::Rectangle<float> (c.x - rx, c.y - rx, rx * 2.0f, rx * 2.0f));
+    };
+    brillo ({ r.getX() + r.getWidth() * 0.2f, r.getY() - r.getHeight() * 0.1f }, 1200.0f, 600.0f, juce::Colour (0xff1a2550), 0.6f);
+    brillo ({ r.getX() + r.getWidth() * 1.1f, r.getY() + r.getHeight() * 1.1f }, 900.0f, 500.0f, juce::Colour (0xff2a1d10), 0.55f);
+    // o gran: unha textura de ruído moi tenue, sempre a mesma
+    static const juce::Image gran = []
+    {
+        juce::Image im (juce::Image::ARGB, 160, 160, true);
+        juce::Random rnd (1966);
+        for (int y = 0; y < 160; ++y)
+            for (int x = 0; x < 160; ++x)
+            {
+                const auto v = (juce::uint8) rnd.nextInt (256);
+                im.setPixelAt (x, y, juce::Colour (v, v, v, (juce::uint8) 9));
+            }
+        return im;
+    }();
+    g.setTiledImageFill (gran, 0, 0, 1.0f);
+    g.fillRect (r);
+}
+
+void paintSombra (juce::Graphics& g, juce::Rectangle<float> r, float radio, juce::Colour c, float difuso, float baixa)
+{
+    const int capas = 7;
+    const float a = c.getFloatAlpha() / (float) capas * 1.6f;
+    for (int i = capas; i >= 1; --i)
+    {
+        const float t = (float) i / (float) capas;
+        g.setColour (c.withAlpha (a * (1.0f - t * 0.75f)));
+        g.fillRoundedRectangle (r.translated (0.0f, baixa * (0.4f + 0.6f * t)).expanded (difuso * t * 0.6f), radio + difuso * t * 0.6f);
+    }
+}
+
+float anchoPastilla (const juce::String& t)
+{
+    return anchoTexto (semi (css (10.5f)).withExtraKerningFactor (0.06f), t) * 1.06f + 18.0f + 13.0f + 4.0f;
+}
+
+void paintPastilla (juce::Graphics& g, juce::Rectangle<float> r, const juce::String& t, juce::Colour c, bool led)
+{
+    g.setColour (juce::Colour (0xbf070b16));
+    g.fillRoundedRectangle (r, r.getHeight() * 0.5f);
+    g.setColour (juce::Colours::white.withAlpha (0.06f));
+    g.drawRoundedRectangle (r.reduced (0.5f), r.getHeight() * 0.5f, 1.0f);
+    auto in = r.reduced (9.0f, 0.0f);
+    if (led)
+    {
+        const auto cc = juce::Point<float> (in.getX() + 3.5f, in.getCentreY());
+        g.setColour (c.withAlpha (0.35f));
+        g.fillEllipse (cc.x - 5.0f, cc.y - 5.0f, 10.0f, 10.0f);
+        g.setColour (c);
+        g.fillEllipse (cc.x - 3.5f, cc.y - 3.5f, 7.0f, 7.0f);
+        in.removeFromLeft (13.0f);
+    }
+    g.setColour (c);
+    g.setFont (semi (css (10.5f)).withExtraKerningFactor (0.06f));
+    g.drawText (t, in, juce::Justification::centredLeft, false);
+}
+
+void paintCuberta (juce::Graphics& g, const juce::Image& im, juce::Rectangle<float> r, float zoom, float opacidade)
+{
+    if (! im.isValid()) return;
+    // «cover» desde arriba á esquerda: a escala que enche, e o zoom desde o centro da zona
+    const float e = juce::jmax (r.getWidth() / (float) im.getWidth(), r.getHeight() / (float) im.getHeight()) * zoom;
+    const float dx = (r.getWidth() - r.getWidth() * zoom) * 0.5f, dy = (r.getHeight() - r.getHeight() * zoom) * 0.5f;
+    juce::Graphics::ScopedSaveState ss (g);
+    g.reduceClipRegion (r.toNearestIntEdges());
+    g.setOpacity (opacidade);
+    g.setImageResamplingQuality (juce::Graphics::highResamplingQuality);
+    g.drawImageTransformed (im, juce::AffineTransform::scale (e).translated (r.getX() + dx, r.getY() + dy));
+}
+
+// ================================================================ a icona
+void paintMandoFamilia (juce::Graphics& g, juce::Rectangle<float> r, bool placa, bool monocromo)
+{
+    // as medidas da icona aprobada (icona2.svg, en 1024)
+    const float k = r.getWidth() / 1024.0f;
+    auto P = [&] (float x, float y) { return juce::Point<float> (r.getX() + x * k, r.getY() + y * k); };
+    const auto c = P (512.0f, 512.0f);
+    if (placa && ! monocromo)
+    {
+        const auto pr = juce::Rectangle<float> (P (100.0f, 100.0f), P (924.0f, 924.0f));
+        g.setGradientFill (juce::ColourGradient (juce::Colour (0xff232c4d), 0.0f, pr.getY(), juce::Colour (0xff0e1325), 0.0f, pr.getBottom(), false));
+        g.fillRoundedRectangle (pr, 185.0f * k);
+        g.setColour (juce::Colour (0xff2f3a5e));
+        g.drawRoundedRectangle (pr.reduced (1.5f * k), 185.0f * k, 3.0f * k);
+    }
+    // o arco: 270° en oito segmentos (empeza abaixo á esquerda, coma un mando)
+    const float ra = 275.0f * k;
+    const float a0 = juce::MathConstants<float>::pi * 1.25f;
+    const float seg = 134.0f / 275.0f, paso = 162.0f / 275.0f;
+    const auto& cores = coresFamilia();
+    if (! monocromo)
+    {
+        // o brillo do primeiro (a luz laranxa da familia)
+        juce::Path p;
+        p.addCentredArc (c.x, c.y, ra, ra, 0.0f, a0, a0 + seg, true);
+        for (auto [w, a] : { std::pair<float, float> { 90.0f, 0.10f }, { 64.0f, 0.18f } })
+        {
+            g.setColour (cores[0].withAlpha (a));
+            g.strokePath (p, juce::PathStrokeType (w * k, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        }
+    }
+    for (size_t i = 0; i < cores.size(); ++i)
+    {
+        const float a = a0 + (float) i * paso;
+        juce::Path p;
+        p.addCentredArc (c.x, c.y, ra, ra, 0.0f, a, a + seg, true);
+        g.setColour (monocromo ? juce::Colours::black : cores[i]);
+        g.strokePath (p, juce::PathStrokeType ((monocromo ? 52.0f : 40.0f) * k, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    }
+    // o disco e a agulla
+    const float kr = 200.0f * k;
+    if (monocromo)
+    {
+        g.setColour (juce::Colours::black);
+        g.drawEllipse (c.x - kr, c.y - kr, kr * 2.0f, kr * 2.0f, 46.0f * k);
+        g.drawLine ({ c, P (512.0f, 345.0f) }, 46.0f * k);
+        return;
+    }
+    g.setColour (juce::Colour (0xff080b16).withAlpha (0.6f));
+    g.fillEllipse (c.x - kr, c.y - kr + 18.0f * k, kr * 2.0f, kr * 2.0f);
+    juce::ColourGradient disco (juce::Colour (0xff4a5578), c.x - kr * 0.24f, c.y - kr * 0.4f, juce::Colour (0xff151a2e), c.x - kr * 0.24f + kr * 1.6f, c.y - kr * 0.4f, true);
+    disco.addColour (0.6, juce::Colour (0xff232a45));
+    g.setGradientFill (disco);
+    g.fillEllipse (c.x - kr, c.y - kr, kr * 2.0f, kr * 2.0f);
+    g.setColour (juce::Colour (0xff3a4468));
+    g.drawEllipse (c.x - kr, c.y - kr, kr * 2.0f, kr * 2.0f, 3.0f * k);
+    g.setColour (col::crema);
+    juce::Path ag;
+    ag.startNewSubPath (c);
+    ag.lineTo (P (512.0f, 345.0f));
+    g.strokePath (ag, juce::PathStrokeType (26.0f * k, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+}
+
+juce::Image iconaApp()
+{
+    static const juce::Image im = []
+    {
+        auto i = juce::ImageFileFormat::loadFrom (BinaryData::Icona_png, BinaryData::Icona_pngSize);
+        if (! i.isValid()) return i;
+        // sen o marxe transparente (a placa vai de 100 a 924 en 1024)
+        const int a = i.getWidth() * 100 / 1024, b = i.getWidth() * 824 / 1024;
+        return i.getClippedImage ({ a, a, b, b });
+    }();
+    return im;
+}
+
 // ================================================================ aspecto
 Look::Look()
 {
@@ -181,8 +394,8 @@ Look::Look()
     setColour (juce::PopupMenu::backgroundColourId, col::panel2);
     setColour (juce::PopupMenu::textColourId, col::crema);
     setColour (juce::PopupMenu::headerTextColourId, col::laranxa);
-    setColour (juce::PopupMenu::highlightedBackgroundColourId, col::laranxa);
-    setColour (juce::PopupMenu::highlightedTextColourId, col::noite);
+    setColour (juce::PopupMenu::highlightedBackgroundColourId, juce::Colours::white.withAlpha (0.07f));
+    setColour (juce::PopupMenu::highlightedTextColourId, col::crema);
     setColour (juce::TextButton::buttonColourId, col::tecla2);
     setColour (juce::TextButton::textColourOffId, col::crema2);
     setColour (juce::TextButton::textColourOnId, col::crema);
@@ -200,79 +413,186 @@ static juce::Colour corProp (juce::Button& b, const char* k, juce::Colour porDef
     return b.getProperties().contains (k) ? juce::Colour ((juce::uint32) (juce::int64) b.getProperties()[k]) : porDefecto;
 }
 
-// as teclas: en relevo, cun LED (aceso se está escollida, ou sempre na acción principal) e o texto
-// en maiúsculas espaciadas; co foco do teclado, un aro na cor do LED
+static juce::String estiloDe (juce::Button& b)
+{
+    if (b.getProperties().contains ("icona")) return "icona";
+    if (b.getProperties().contains ("primaria")) return "primaria";
+    return b.getProperties()["estilo"].toString();
+}
+
+static juce::Font fonteTecla (juce::Button& b, const juce::String& estilo)
+{
+    if (estilo == "chip") return caps (css (10.0f), 0.12f);
+    const float t = (float) b.getProperties().getWithDefault ("fontSize", 13.0);
+    return semi (css (t));
+}
+
+int Look::anchoTecla (const juce::TextButton& b, int marxe)
+{
+    auto& bb = const_cast<juce::TextButton&> (b);
+    const auto e = estiloDe (bb);
+    const auto t = e == "chip" ? upper (b.getButtonText()) : b.getButtonText();
+    int w = juce::roundToInt (anchoTexto (fonteTecla (bb, e), t)) + marxe;
+    if (e == "pestana" && bb.getProperties().contains ("reconto"))
+        w += 6 + juce::roundToInt (anchoTexto (semi (css (11.0f)), bb.getProperties()["reconto"].toString()));
+    if (e == "aviso") w += 18;
+    return w;
+}
+
+// As teclas do escaparate: a principal en ámbar, as outras escuras ou só co bordo, as iconas en
+// cadrado; co foco do teclado, un aro (na cor do plugin, se a ten)
 void Look::drawButtonBackground (juce::Graphics& g, juce::Button& b, const juce::Colour&, bool over, bool down)
 {
-    auto r = b.getLocalBounds().toFloat().reduced (1.0f).withTrimmedBottom (1.5f);
-    const auto luz = corProp (b, "led", col::laranxa);
-    if (b.getProperties().contains ("gold"))
+    const auto e = estiloDe (b);
+    auto r = b.getLocalBounds().toFloat().reduced (0.5f);
+    const float rad = e == "pestana" ? 8.0f : e == "chip" ? 6.0f : 10.0f;
+    const bool on = b.isEnabled();
+    if (e == "primaria")
     {
-        paintWell (g, r, 8.0f);
-        if (over) { g.setColour (col::laranxa.withAlpha (0.08f)); g.fillRoundedRectangle (r, 8.0f); }
+        if (on) paintSombra (g, r.reduced (4.0f, 2.0f), rad, col::laranxa.withAlpha (over ? 0.45f : 0.32f), 14.0f, 5.0f);
+        auto rr = down ? r.translated (0.0f, 1.0f) : r;
+        juce::ColourGradient gr (juce::Colour (0xfff0a12a), 0.0f, rr.getY(), juce::Colour (0xffcf7c0d), 0.0f, rr.getBottom(), false);
+        if (! on) { gr = juce::ColourGradient (col::tecla1, 0.0f, rr.getY(), col::tecla2, 0.0f, rr.getBottom(), false); }
+        g.setGradientFill (gr);
+        g.fillRoundedRectangle (rr, rad);
+        if (over && on) { g.setColour (juce::Colours::white.withAlpha (0.10f)); g.fillRoundedRectangle (rr, rad); }
+        g.setColour (juce::Colours::white.withAlpha (on ? 0.25f : 0.06f));
+        g.fillRect (rr.getX() + rad, rr.getY() + 0.5f, rr.getWidth() - 2.0f * rad, 1.0f);
     }
+    else if (e == "icona")
+    {
+        g.setColour (juce::Colours::white.withAlpha (down ? 0.09f : over ? 0.07f : 0.04f));
+        g.fillRoundedRectangle (r, rad);
+        g.setColour (juce::Colours::white.withAlpha (over ? 0.10f : 0.06f));
+        g.drawRoundedRectangle (r, rad, 1.0f);
+    }
+    else if (e == "contorno" || e == "fantasma")
+    {
+        const auto c = e == "contorno" ? corProp (b, "cor", col::ouro) : col::crema;
+        if (over && on) { g.setColour (c.withAlpha (0.08f)); g.fillRoundedRectangle (r, rad); }
+        g.setColour (c.withAlpha (! on ? 0.08f : e == "contorno" ? (over ? 0.55f : 0.35f) : (over ? 0.24f : 0.14f)));
+        g.drawRoundedRectangle (r, rad, 1.0f);
+    }
+    else if (e == "pestana")
+    {
+        if (b.getToggleState() || over)
+        {
+            g.setColour (juce::Colours::white.withAlpha (b.getToggleState() ? 0.06f : 0.03f));
+            g.fillRoundedRectangle (r, rad);
+        }
+    }
+    else if (e == "chip")
+    {
+        if (b.getToggleState())
+        {
+            g.setColour (col::laranxa.withAlpha (0.12f));
+            g.fillRoundedRectangle (r, rad);
+        }
+        g.setColour (b.getToggleState() ? col::laranxa.withAlpha (0.5f) : juce::Colours::white.withAlpha (over ? 0.16f : 0.08f));
+        g.drawRoundedRectangle (r, rad, 1.0f);
+    }
+    else if (e == "aviso")
+    {
+        g.setColour (col::ouro.withAlpha (over ? 0.13f : 0.08f));
+        g.fillRoundedRectangle (r, rad);
+        g.setColour (col::ouro.withAlpha (over ? 0.35f : 0.2f));
+        g.drawRoundedRectangle (r, rad, 1.0f);
+    }
+    else if (e == "ligazon") {}
     else
     {
-        const bool primaria = b.getProperties().contains ("primaria");
-        paintKey (g, r, over && b.isEnabled(), down);
-        if (primaria && b.isEnabled())
-        {
-            // a acción principal: un bordo morno na cor do plugin
-            g.setColour (luz.withAlpha (over ? 0.55f : 0.38f));
-            g.drawRoundedRectangle (r.translated (0.0f, down ? 1.0f : 0.0f).reduced (0.5f), 7.0f, 1.0f);
-        }
-        if (down) r.translate (0.0f, 1.0f);
-        if (! b.getProperties().contains ("noLed") && ! b.getProperties().contains ("icona"))
-            paintLed (g, { r.getX() + 13.0f, r.getCentreY() }, (primaria && b.isEnabled()) || b.getToggleState(), luz);
+        // a tecla de sempre: escura, cun fío de luz arriba
+        auto rr = down ? r.translated (0.0f, 1.0f) : r;
+        g.setGradientFill (juce::ColourGradient (col::tecla1.brighter (over && on ? 0.12f : 0.0f), 0.0f, rr.getY(), col::tecla2, 0.0f, rr.getBottom(), false));
+        g.fillRoundedRectangle (rr, rad);
+        g.setColour (juce::Colours::white.withAlpha (0.08f));
+        g.drawRoundedRectangle (rr, rad, 1.0f);
     }
     if (b.hasKeyboardFocus (false))
     {
-        g.setColour (luz.withAlpha (0.9f));
-        g.drawRoundedRectangle (b.getLocalBounds().toFloat().reduced (0.5f), 8.0f, 1.6f);
+        g.setColour (corProp (b, "led", col::crema).withAlpha (0.9f));
+        g.drawRoundedRectangle (b.getLocalBounds().toFloat().reduced (1.0f), rad + 0.5f, 1.6f);
     }
 }
 
 void Look::drawButtonText (juce::Graphics& g, juce::TextButton& b, bool over, bool down)
 {
-    auto r = b.getLocalBounds().toFloat().reduced (1.0f).withTrimmedBottom (1.5f);
-    if (b.getProperties().contains ("gold"))
-    {
-        g.setFont (caps (11.0f, 0.12f));
-        glowText (g, upper (b.getButtonText()), r.reduced (12.0f, 0.0f), juce::Justification::centred, col::ouro);
-        return;
-    }
-    if (down) r.translate (0.0f, 1.0f);
-    juce::Colour c = b.getToggleState() || over || b.getProperties().contains ("primaria") ? col::crema : col::crema2;
-    if (! b.isEnabled()) c = col::crema3.withAlpha (0.6f);
+    const auto e = estiloDe (b);
+    auto r = b.getLocalBounds().toFloat();
+    if (down && (e == "primaria" || e.isEmpty())) r.translate (0.0f, 1.0f);
+    const bool on = b.isEnabled();
+    juce::Colour c = col::crema;
+    if (e == "primaria") c = on ? juce::Colour (0xff1a1205) : col::crema3;
+    else if (e == "icona") c = over ? col::crema : col::crema2;
+    else if (e == "contorno") c = corProp (b, "cor", col::ouro);
+    else if (e == "fantasma") c = over ? col::crema : col::crema2;
+    else if (e == "pestana") c = b.getToggleState() ? col::crema : over ? col::crema2 : col::crema3;
+    else if (e == "chip") c = b.getToggleState() ? col::crema : over ? col::crema2 : col::crema3;
+    else if (e == "aviso") c = col::ouro;
+    else if (e == "ligazon") c = over ? col::crema : corProp (b, "cor", col::crema3);
+    if (! on) c = c.withMultipliedAlpha (0.5f);
     g.setColour (c);
-    const auto icona = b.getProperties()["icona"].toString();
-    if (icona == "refrescar") { paintRefrescar (g, r, c); return; }
-    if (icona == "mais")
+
+    if (e == "icona")
     {
-        for (int i = -1; i <= 1; ++i) g.fillEllipse (r.getCentreX() + (float) i * 6.0f - 1.7f, r.getCentreY() - 1.7f, 3.4f, 3.4f);
+        const auto icona = b.getProperties()["icona"].toString();
+        if (icona == "refrescar") { paintRefrescar (g, r, c); return; }
+        if (icona == "axustes") { paintEngrenaxe (g, r, c); return; }
+        if (icona == "mais")
+        {
+            for (int i = -1; i <= 1; ++i) g.fillEllipse (r.getCentreX() + (float) i * 5.0f - 1.4f, r.getCentreY() - 1.4f, 2.8f, 2.8f);
+            return;
+        }
+        if (icona == "pechar")
+        {
+            const auto c0 = r.getCentre();
+            g.drawLine (c0.x - 5.5f, c0.y - 5.5f, c0.x + 5.5f, c0.y + 5.5f, 1.6f);
+            g.drawLine (c0.x + 5.5f, c0.y - 5.5f, c0.x - 5.5f, c0.y + 5.5f, 1.6f);
+            return;
+        }
+        if (icona == "anterior" || icona == "seguinte")
+        {
+            const float s = icona == "anterior" ? -1.0f : 1.0f;
+            const auto c0 = r.getCentre();
+            juce::Path p;
+            p.startNewSubPath (c0.x - 2.5f * s, c0.y - 6.0f);
+            p.lineTo (c0.x + 3.5f * s, c0.y);
+            p.lineTo (c0.x - 2.5f * s, c0.y + 6.0f);
+            g.strokePath (p, juce::PathStrokeType (1.8f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            return;
+        }
         return;
     }
-    if (icona == "pechar")
+    const auto f = fonteTecla (b, e);
+    g.setFont (f);
+    if (e == "chip")
     {
-        const auto c0 = r.getCentre();
-        g.drawLine (c0.x - 5.0f, c0.y - 5.0f, c0.x + 5.0f, c0.y + 5.0f, 1.8f);
-        g.drawLine (c0.x + 5.0f, c0.y - 5.0f, c0.x - 5.0f, c0.y + 5.0f, 1.8f);
+        g.drawText (upper (b.getButtonText()), r, juce::Justification::centred, false);
         return;
     }
-    if (icona == "anterior" || icona == "seguinte")
+    if (e == "aviso")
     {
-        const float s = icona == "anterior" ? -1.0f : 1.0f;
-        const auto c0 = r.getCentre();
-        juce::Path p;
-        p.startNewSubPath (c0.x - 2.5f * s, c0.y - 6.0f);
-        p.lineTo (c0.x + 3.5f * s, c0.y);
-        p.lineTo (c0.x - 2.5f * s, c0.y + 6.0f);
-        g.strokePath (p, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        // o LED e o texto
+        const auto cc = juce::Point<float> (r.getX() + 15.0f, r.getCentreY());
+        g.setColour (col::ouro.withAlpha (0.3f)); g.fillEllipse (cc.x - 5.5f, cc.y - 5.5f, 11.0f, 11.0f);
+        g.setColour (col::ouro); g.fillEllipse (cc.x - 4.0f, cc.y - 4.0f, 8.0f, 8.0f);
+        g.setFont (body (css (13.0f)));
+        g.drawFittedText (b.getButtonText(), r.withTrimmedLeft (28.0f).withTrimmedRight (10.0f).toNearestInt(), juce::Justification::centredLeft, 1, 0.85f);
         return;
     }
-    if (! b.getProperties().contains ("noLed")) r.removeFromLeft (16.0f);
-    g.setFont (caps ((float) b.getProperties().getWithDefault ("fontSize", 9.5f), 0.15f));
-    g.drawFittedText (upper (b.getButtonText()), r.toNearestInt().reduced (4, 0), juce::Justification::centred, 1, 0.75f);
+    if (e == "pestana" && b.getProperties().contains ("reconto"))
+    {
+        const auto n = b.getProperties()["reconto"].toString();
+        const auto fn = semi (css (11.0f));
+        const float wt = anchoTexto (f, b.getButtonText()), wn = anchoTexto (fn, n);
+        const float x = r.getCentreX() - (wt + 6.0f + wn) * 0.5f;
+        g.drawText (b.getButtonText(), juce::Rectangle<float> (x, r.getY(), wt + 2.0f, r.getHeight()), juce::Justification::centredLeft, false);
+        g.setColour (col::crema3);
+        g.setFont (fn);
+        g.drawText (n, juce::Rectangle<float> (x + wt + 6.0f, r.getY() + 1.0f, wn + 2.0f, r.getHeight()), juce::Justification::centredLeft, false);
+        return;
+    }
+    g.drawFittedText (b.getButtonText(), r.toNearestInt().reduced (8, 0), juce::Justification::centred, 1, 0.8f);
 }
 
 void Look::drawTooltip (juce::Graphics& g, const juce::String& text, int w, int h)
@@ -298,7 +618,46 @@ juce::Rectangle<int> Look::getTooltipBounds (const juce::String& text, juce::Poi
 void Look::drawPopupMenuBackground (juce::Graphics& g, int w, int h)
 {
     g.fillAll (col::panel2);
-    g.setColour (col::lina); g.drawRect (0, 0, w, h);
+    g.setColour (juce::Colours::white.withAlpha (0.08f)); g.drawRect (0, 0, w, h);
+}
+
+void Look::drawPopupMenuItem (juce::Graphics& g, const juce::Rectangle<int>& area, bool sep, bool activo, bool resaltado, bool marcado,
+                              bool submenu, const juce::String& texto, const juce::String& atallo, const juce::Drawable* icona, const juce::Colour* cor)
+{
+    if (sep || ! resaltado || ! activo)
+    {
+        LookAndFeel_V4::drawPopupMenuItem (g, area, sep, activo, resaltado, marcado, submenu, texto, atallo, icona, cor);
+        return;
+    }
+    // o resaltado: unha pastilla suave, non unha barra laranxa enteira
+    g.setColour (juce::Colours::white.withAlpha (0.07f));
+    g.fillRoundedRectangle (area.toFloat().reduced (4.0f, 1.0f), 6.0f);
+    const auto c = col::crema;
+    LookAndFeel_V4::drawPopupMenuItem (g, area, sep, activo, false, marcado, submenu, texto, atallo, icona, &c);
+}
+
+void Look::fillTextEditorBackground (juce::Graphics& g, int w, int h, juce::TextEditor& t)
+{
+    if (t.getProperties().contains ("buscador"))
+    {
+        auto r = juce::Rectangle<float> ((float) w, (float) h).reduced (0.5f);
+        g.setColour (juce::Colours::black.withAlpha (0.25f));
+        g.fillRoundedRectangle (r, 10.0f);
+        return;
+    }
+    LookAndFeel_V4::fillTextEditorBackground (g, w, h, t);
+}
+
+void Look::drawTextEditorOutline (juce::Graphics& g, int w, int h, juce::TextEditor& t)
+{
+    if (t.getProperties().contains ("buscador"))
+    {
+        auto r = juce::Rectangle<float> ((float) w, (float) h).reduced (0.5f);
+        g.setColour (t.hasKeyboardFocus (true) ? col::laranxa.withAlpha (0.55f) : juce::Colours::white.withAlpha (0.06f));
+        g.drawRoundedRectangle (r, 10.0f, t.hasKeyboardFocus (true) ? 1.4f : 1.0f);
+        return;
+    }
+    LookAndFeel_V4::drawTextEditorOutline (g, w, h, t);
 }
 
 void Look::drawScrollbar (juce::Graphics& g, juce::ScrollBar&, int x, int y, int w, int h, bool vertical, int thumbStart, int thumbSize, bool over, bool down)

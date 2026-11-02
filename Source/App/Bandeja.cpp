@@ -18,20 +18,11 @@ Bandeja::~Bandeja()
 
 juce::Image Bandeja::icona (bool aviso, bool monocromo, int tam)
 {
-    // o mando da familia: o anel de LED, o disco e a agulla (coma a icona da app); cun punto se hai algo novo
+    // o mando da familia (coma a icona da app): en cor coa placa (Windows, Linux) ou en negro
+    // para o «template» da barra de menús do Mac; cun punto se hai algo novo
     juce::Image im (juce::Image::ARGB, tam, tam, true);
     juce::Graphics g (im);
     const float t = (float) tam;
-    const auto c = juce::Point<float> (t * 0.5f, t * 0.5f);
-    const float ring = t * 0.36f;
-    const float a0 = juce::MathConstants<float>::pi * 1.25f, a1 = juce::MathConstants<float>::pi * 2.75f;
-    const float ang = a0 + 0.72f * (a1 - a0);
-    const auto tinta = monocromo ? juce::Colours::black : aspecto::col::crema;
-    if (! monocromo)
-    {
-        g.setColour (aspecto::col::noite);
-        g.fillRoundedRectangle (0.0f, 0.0f, t, t, t * 0.22f);
-    }
     // o punto do aviso, abaixo á dereita, cun oco arredor (o mando non o toca)
     const float r = t * 0.17f;
     const auto punto = juce::Rectangle<float> (t - 2.0f * r, t - 2.0f * r, 2.0f * r, 2.0f * r);
@@ -45,15 +36,9 @@ juce::Image Bandeja::icona (bool aviso, bool monocromo, int tam)
             fora.addEllipse (punto.expanded (t * 0.06f));
             g.reduceClipRegion (fora);
         }
-        juce::Path val;
-        val.addCentredArc (c.x, c.y, ring, ring, 0.0f, a0, ang, true);
-        g.setColour (monocromo ? juce::Colours::black : aspecto::col::laranxa);
-        g.strokePath (val, juce::PathStrokeType (t * 0.09f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-        const float kr = t * 0.22f;
-        g.setColour (tinta);
-        g.drawEllipse (c.x - kr, c.y - kr, kr * 2.0f, kr * 2.0f, t * 0.07f);
-        const juce::Point<float> punta (c.x + kr * 0.85f * std::sin (ang), c.y - kr * 0.85f * std::cos (ang));
-        g.drawLine ({ c, punta }, t * 0.08f);
+        // sen placa, o mando enche o cadrado (o arco vai de 237 a 787 en 1024)
+        const auto zona = monocromo ? juce::Rectangle<float> (0.0f, 0.0f, t, t).expanded (t * 0.34f) : juce::Rectangle<float> (0.0f, 0.0f, t, t).expanded (t * 0.1f);
+        aspecto::paintMandoFamilia (g, zona, ! monocromo, monocromo);
     }
     if (aviso)
     {

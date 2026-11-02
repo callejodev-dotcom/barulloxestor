@@ -25,6 +25,11 @@ namespace col
 
 // a cor propia de cada plugin (sempre a mesma para o mesmo nome)
 juce::Colour acento (const juce::String& nome);
+// as oito luces da familia, na orde do arco da icona
+const std::vector<juce::Colour>& coresFamilia();
+
+// Os tamaños da maqueta (CSS, en px) nas fontes de JUCE (que miden o alto enteiro, non o «em»)
+inline float css (float px) { return px * 1.21f; }
 
 juce::Font body (float size);    // Inter
 juce::Font semi (float size);    // Montserrat SemiBold
@@ -44,11 +49,38 @@ void groupTitle (juce::Graphics&, juce::Rectangle<float>, const juce::String&, j
 float marcaEscoita (juce::Graphics&, juce::Rectangle<float>, float size, float tracking, juce::Colour);
 // unha frecha en arco (refrescar)
 void paintRefrescar (juce::Graphics&, juce::Rectangle<float>, juce::Colour);
+// as iconas pequenas das teclas: a roda dos axustes, a lupa, o visto
+void paintEngrenaxe (juce::Graphics&, juce::Rectangle<float>, juce::Colour);
+void paintLupa (juce::Graphics&, juce::Rectangle<float>, juce::Colour);
+void paintVisto (juce::Graphics&, juce::Rectangle<float>, juce::Colour, float grosor = 2.0f);
 
-// Propiedades das teclas (TextButton): «led» = cor do LED, «noLed», «primaria» (a acción principal,
-// co LED aceso na cor do plugin), «gold» (visor dourado), «icona» = "refrescar" | "mais" | "pechar"
+// ---------------------------------------------------------------- o escaparate
+// o fondo: a noite cun brillo azul arriba á esquerda e un morno abaixo á dereita (e un gran fino)
+void paintFondo (juce::Graphics&, juce::Rectangle<float>);
+// unha sombra suave (capas) baixo un rectángulo redondeado
+void paintSombra (juce::Graphics&, juce::Rectangle<float>, float radio, juce::Colour, float difuso, float baixa);
+// unha pastilla escura cun LED e un texto (o estado na captura)
+void paintPastilla (juce::Graphics&, juce::Rectangle<float>, const juce::String&, juce::Colour, bool led = true);
+float anchoPastilla (const juce::String&);
+// unha imaxe recortada para encher (desde arriba á esquerda), cun zoom opcional
+void paintCuberta (juce::Graphics&, const juce::Image&, juce::Rectangle<float>, float zoom = 1.0f, float opacidade = 1.0f);
+
+// ---------------------------------------------------------------- a icona
+// O mando da familia: o arco de segmentos coas oito cores, o disco e a agulla. En «r» (cadrado)
+// como a icona de 1024 (coa placa); «monocromo»: só o mando, en negro (a barra de menús do Mac).
+void paintMandoFamilia (juce::Graphics&, juce::Rectangle<float> r, bool placa, bool monocromo = false);
+// a icona da app (Resources/Icona.png), sen o marxe transparente
+juce::Image iconaApp();
+
+// Propiedades das teclas (TextButton):
+//   «primaria»: a acción principal (ámbar); «icona» = "refrescar" | "axustes" | "mais" | "pechar" | "anterior" | "seguinte"
+//   «estilo» = "contorno" (só o bordo e o texto na cor «cor») | "fantasma" | "pestana" (co «reconto») | "chip"
+//              (os formatos do pé, acesos co toggle) | "aviso" (ouro, cun LED) | "ligazon" (só o texto)
+//   «led»: a cor do aro do foco; «fontSize»: o tamaño do texto (CSS)
 struct Look : juce::LookAndFeel_V4
 {
+    // o ancho que precisa unha tecla co seu texto (para colocalas)
+    static int anchoTecla (const juce::TextButton&, int marxe = 32);
     Look();
     juce::Typeface::Ptr getTypefaceForFont (const juce::Font&) override;
     void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour&, bool over, bool down) override;
@@ -62,7 +94,13 @@ struct Look : juce::LookAndFeel_V4
     int getDefaultScrollbarWidth() override { return 10; }
     juce::Font getAlertWindowMessageFont() override { return body (14.5f); }
     juce::Font getAlertWindowTitleFont() override { return cond (17.0f); }
-    juce::Font getTextButtonFont (juce::TextButton&, int) override { return caps (10.0f, 0.15f); }
+    juce::Font getTextButtonFont (juce::TextButton&, int) override { return semi (css (13.0f)); }
+    void fillTextEditorBackground (juce::Graphics&, int w, int h, juce::TextEditor&) override;
+    void drawTextEditorOutline (juce::Graphics&, int w, int h, juce::TextEditor&) override;
+    void drawPopupMenuItem (juce::Graphics&, const juce::Rectangle<int>&, bool isSeparator, bool isActive, bool isHighlighted,
+                            bool isTicked, bool hasSubMenu, const juce::String& text, const juce::String& shortcutKeyText,
+                            const juce::Drawable* icon, const juce::Colour* textColour) override;
+    int getPopupMenuBorderSize() override { return 6; }
     void drawAlertBox (juce::Graphics&, juce::AlertWindow&, const juce::Rectangle<int>& textArea, juce::TextLayout&) override;
 };
 } // namespace aspecto

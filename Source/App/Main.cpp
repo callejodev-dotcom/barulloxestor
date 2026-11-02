@@ -131,11 +131,8 @@ int captura (const xestor::cli::Opcions& o)
     vistas::Principal p (m);
     p.setSize (o.ancho, o.alto);
     if (o.completa) p.setSize (o.ancho, juce::jmax (o.alto, p.altoCompleto (o.ancho)));
-    if (o.escena == "captura")
-        for (auto& pr : m.produtos())
-            if (! pr.capturas.isEmpty()) { p.abrirVisor (pr, 0); break; }
     p.resized();
-    p.escena (o.escena);   // os paneis (notas, DAW, xestor, atallos)
+    p.escena (o.escena);   // os paneis (notas, DAW, xestor, atallos) e a ficha
     auto im = p.createComponentSnapshot (p.getLocalBounds(), true, o.escala);
     o.captura.deleteFile();
     juce::FileOutputStream out (o.captura);
@@ -151,55 +148,17 @@ int captura (const xestor::cli::Opcions& o)
 }
 
 // ================================================================ a icona (1024 px)
-// Un mando da familia (o disco mecanizado e o anel de LED laranxa) nunha placa azul mariño.
+// O mando da familia: o arco de segmentos coas oito cores, o disco e a agulla, nunha placa azul
+// mariño (a de Resources/Icona.png; isto debúxaa de novo, para comprobala e para a bandeja).
 int icona (const xestor::cli::Opcions& o)
 {
     juce::ScopedJuceInitialiser_GUI gui;
-    using namespace aspecto;
     const int N = 1024;
     juce::Image im (juce::Image::ARGB, N, N, true);
-    juce::Graphics g (im);
-    const auto placa = juce::Rectangle<float> (100.0f, 100.0f, 824.0f, 824.0f);
-    const float rad = 185.0f;
-    for (int i = 10; i >= 1; --i)
     {
-        g.setColour (juce::Colours::black.withAlpha (0.035f));
-        g.fillRoundedRectangle (placa.translated (0.0f, 2.0f * (float) i).expanded ((float) i * 1.5f), rad + (float) i);
+        juce::Graphics g (im);
+        aspecto::paintMandoFamilia (g, { 0.0f, 0.0f, (float) N, (float) N }, true);
     }
-    g.setGradientFill (juce::ColourGradient (juce::Colour (0xff222c4c), 0.0f, placa.getY(), juce::Colour (0xff0d1326), 0.0f, placa.getBottom(), false));
-    g.fillRoundedRectangle (placa, rad);
-    g.setColour (juce::Colours::white.withAlpha (0.10f));
-    g.drawRoundedRectangle (placa.reduced (1.5f), rad, 3.0f);
-
-    const auto c = placa.getCentre().translated (0.0f, 6.0f);
-    const float ring = 300.0f;
-    const float a0 = juce::MathConstants<float>::pi * 1.25f, a1 = juce::MathConstants<float>::pi * 2.75f;
-    const float ang = a0 + 0.72f * (a1 - a0);
-    juce::Path pista; pista.addCentredArc (c.x, c.y, ring, ring, 0.0f, a0, a1, true);
-    g.setColour (juce::Colours::black.withAlpha (0.55f));
-    g.strokePath (pista, juce::PathStrokeType (34.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    juce::Path val; val.addCentredArc (c.x, c.y, ring, ring, 0.0f, a0, ang, true);
-    for (auto [w, a] : { std::pair<float, float> { 90.0f, 0.10f }, { 58.0f, 0.22f }, { 34.0f, 1.0f } })
-    {
-        g.setColour (col::laranxa.withAlpha (a));
-        g.strokePath (val, juce::PathStrokeType (w, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-    }
-    const float kr = 222.0f;
-    g.setColour (juce::Colours::black.withAlpha (0.5f));
-    g.fillEllipse (c.x - kr, c.y - kr + 22.0f, kr * 2.0f, kr * 2.0f);
-    juce::ColourGradient disco (juce::Colour (0xff56638a), c.x - kr * 0.3f, c.y - kr * 0.45f, juce::Colour (0xff0e1323), c.x + kr * 0.55f, c.y + kr * 1.05f, true);
-    disco.addColour (0.55, juce::Colour (0xff232b45));
-    g.setGradientFill (disco);
-    g.fillEllipse (c.x - kr, c.y - kr, kr * 2.0f, kr * 2.0f);
-    g.setColour (juce::Colours::white.withAlpha (0.12f));
-    g.drawEllipse (c.x - kr, c.y - kr, kr * 2.0f, kr * 2.0f, 4.0f);
-    const juce::Point<float> punta (c.x + kr * 0.80f * std::sin (ang), c.y - kr * 0.80f * std::cos (ang));
-    g.setColour (col::crema);
-    g.drawLine ({ c, punta }, 22.0f);
-    g.fillEllipse (c.x - 11.0f, c.y - 11.0f, 22.0f, 22.0f);
-    // o punto laranxa de «escoita.»
-    g.setColour (col::laranxa);
-    g.fillEllipse (placa.getRight() - 150.0f, placa.getBottom() - 150.0f, 44.0f, 44.0f);
 
     if (o.icona.getFileNameWithoutExtension().endsWith ("-bandeja"))
         im = Bandeja::icona (true, false, 256);   // (para revisar a da bandeja)
